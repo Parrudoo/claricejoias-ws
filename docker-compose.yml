@@ -21,3 +21,17 @@ services:
       - MINIO_ROOT_USER=minioadmin
       - MINIO_ROOT_PASSWORD=minioadmin
     command: server /data --console-address ":9001"
+
+  db:
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: claricejoias
+    ports:
+      - "5433:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data # Persistência dos dados
+
+volumes:
+  db_data:

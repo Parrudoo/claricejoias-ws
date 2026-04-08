@@ -1,13 +1,18 @@
 package br.com.claricejoias_ws;
 
+import br.com.claricejoias_ws.config.ModelMapperConfig;
+import br.com.claricejoias_ws.dto.CategoriaDTO;
 import br.com.claricejoias_ws.model.Categoria;
 import br.com.claricejoias_ws.repository.CategoriaRepository;
 import jakarta.transaction.Transactional;
+import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.ui.ModelMap;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class CategoriaService {
@@ -15,8 +20,15 @@ public class CategoriaService {
     @Autowired
     private CategoriaRepository repository;
 
-    public List<Categoria> listarTodas() {
-        return repository.findAll();
+    @Autowired
+    private ModelMapper modelMapper;
+
+    public List<CategoriaDTO> listarTodas() {
+
+        List<Categoria> categorias = repository.findAll();
+        return categorias.stream()
+                .map(categoria -> modelMapper.map(categoria, CategoriaDTO.class))
+                .collect(Collectors.toList());
     }
 
     public Optional<Categoria> buscarPorId(Long id) {
