@@ -1,0 +1,52 @@
+package br.com.claricejoias_ws.controller;
+
+import br.com.claricejoias_ws.service.MinioService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.InputStream;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/arquivos")
+@RequiredArgsConstructor
+public class ArquivoController {
+
+    private final MinioService minioService;
+
+    @PostMapping("/upload")
+    public ResponseEntity<Map<String, String>> upload(@RequestParam("file") MultipartFile file) throws Exception {
+        String objectName = minioService.upload(file);
+        String url = minioService.getPresignedUrl(objectName);
+        return ResponseEntity.ok(Map.of(
+                "objectName", objectName,
+                "url", url
+        ));
+    }
+
+    @GetMapping("/url/{objectName}")
+    public ResponseEntity<Map<String, String>> getUrl(@PathVariable String objectName) throws Exception {
+        String url = minioService.getPresignedUrl(objectName);
+        return ResponseEntity.ok(Map.of("url", url));
+    }
+
+    @GetMapping("/download/{objectName}")
+    public ResponseEntity<InputStreamResource> download(@PathVariable String objectName) throws Exception {
+        InputStream stream = minioService.download(objectName);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + objectName + "\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(new InputStreamResource(stream));
+    }
+
+    @DeleteMapping("/{objectName}")
+    public ResponseEntity<Void> delete(@PathVariable String objectName) throws Exception {
+        minioService.delete(objectName);
+        return ResponseEntity.noContent().build();
+    }
+}
