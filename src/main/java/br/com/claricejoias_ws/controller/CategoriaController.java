@@ -2,7 +2,9 @@ package br.com.claricejoias_ws.controller;
 
 import br.com.claricejoias_ws.CategoriaService;
 import br.com.claricejoias_ws.dto.CategoriaDTO;
+import br.com.claricejoias_ws.dto.SubcategoriaDTO;
 import br.com.claricejoias_ws.model.Categoria;
+import br.com.claricejoias_ws.model.Subcategoria;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -27,6 +29,22 @@ public class CategoriaController {
     public List<CategoriaDTO> listar() {
         List<CategoriaDTO> categorias = service.listarTodas();
         return categorias;
+    }
+
+    @Operation(summary = "Listar subcategorias de uma categoria", description = "Retorna a lista de subcategorias vinculadas a uma categoria específica através do seu ID")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Lista de subcategorias retornada com sucesso"),
+            @ApiResponse(responseCode = "404", description = "Categoria não encontrada")
+    })
+    @GetMapping("/{id}/subcategorias")
+    public ResponseEntity<List<Subcategoria>> listarSubcategoriasPorCategoria(
+            @Parameter(description = "ID da categoria pai") @PathVariable Long id) {
+        try {
+            // O tipo de retorno na lista dependerá do que você usa no seu Service (Subcategoria ou SubcategoriaDTO)
+            return ResponseEntity.ok(service.listarSubcategoriasPorCategoriaId(id));
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 
     @Operation(summary = "Cadastrar nova categoria", description = "Cria uma nova categoria no sistema")

@@ -10,5 +10,5 @@ public class CategoriaDTO {
     private Long id;
     private String nome;
 
-    private List<SubcategoriaDTO> subcategorias;
+//    private List<SubcategoriaDTO> subcategorias;
 }

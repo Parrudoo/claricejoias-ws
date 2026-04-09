@@ -13,6 +13,9 @@ public class Subcategoria {
     private Long id;
     private String nome;
 
+    @ManyToOne
+    private Categoria categoria;
+
     @OneToMany(mappedBy = "subcategoria", cascade = CascadeType.ALL)
     private List<Produto> itens;
 }

@@ -3,7 +3,9 @@ package br.com.claricejoias_ws;
 import br.com.claricejoias_ws.config.ModelMapperConfig;
 import br.com.claricejoias_ws.dto.CategoriaDTO;
 import br.com.claricejoias_ws.model.Categoria;
+import br.com.claricejoias_ws.model.Subcategoria;
 import br.com.claricejoias_ws.repository.CategoriaRepository;
+import br.com.claricejoias_ws.repository.SubCategoriaRepository;
 import jakarta.transaction.Transactional;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +23,9 @@ public class CategoriaService {
     private CategoriaRepository repository;
 
     @Autowired
+    private SubCategoriaRepository subCategoriaRepository;
+
+    @Autowired
     private ModelMapper modelMapper;
 
     public List<CategoriaDTO> listarTodas() {
@@ -29,6 +34,17 @@ public class CategoriaService {
         return categorias.stream()
                 .map(categoria -> modelMapper.map(categoria, CategoriaDTO.class))
                 .collect(Collectors.toList());
+    }
+
+
+    // Importe sua classe/DTO de Subcategoria
+    public List<Subcategoria> listarSubcategoriasPorCategoriaId(Long categoriaId) {
+        // Verifica se a categoria existe para evitar erro
+        if (!repository.existsById(categoriaId)) {
+            throw new RuntimeException("Categoria não encontrada com o ID: " + categoriaId);
+        }
+
+        return subCategoriaRepository.findByCategoriaId(categoriaId);
     }
 
     public Optional<Categoria> buscarPorId(Long id) {
