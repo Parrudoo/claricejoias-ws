@@ -11,9 +11,11 @@ public class Produto {
     private Long id;
     private String nome;
     private Double preco;
-    private String img;
-    private String material;
 
+    // Campo renomeado
+    private String pathImg;
+
+    private String material;
 
     @ManyToOne
     @JoinColumn(name = "subcategoria_id")

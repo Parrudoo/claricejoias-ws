@@ -1,8 +1,7 @@
 package br.com.claricejoias_ws.controller;
 
-import br.com.claricejoias_ws.CategoriaService;
+import br.com.claricejoias_ws.service.CategoriaService;
 import br.com.claricejoias_ws.dto.CategoriaDTO;
-import br.com.claricejoias_ws.dto.SubcategoriaDTO;
 import br.com.claricejoias_ws.model.Categoria;
 import br.com.claricejoias_ws.model.Subcategoria;
 import io.swagger.v3.oas.annotations.Operation;

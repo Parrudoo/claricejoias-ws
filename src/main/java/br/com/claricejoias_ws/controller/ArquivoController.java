@@ -44,6 +44,18 @@ public class ArquivoController {
                 .body(new InputStreamResource(stream));
     }
 
+
+    // Adicione este método no seu ArquivoController
+    @GetMapping("/view/{objectName}")
+    public ResponseEntity<InputStreamResource> view(@PathVariable String objectName) throws Exception {
+        InputStream stream = minioService.download(objectName);
+
+        // Retorna a imagem diretamente para o navegador renderizar na tag <img>
+        return ResponseEntity.ok()
+                .contentType(MediaType.IMAGE_JPEG) // Avisa o navegador que é uma imagem
+                .body(new InputStreamResource(stream));
+    }
+
     @DeleteMapping("/{objectName}")
     public ResponseEntity<Void> delete(@PathVariable String objectName) throws Exception {
         minioService.delete(objectName);

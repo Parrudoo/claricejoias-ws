@@ -5,14 +5,15 @@ import br.com.claricejoias_ws.model.Produto;
 import br.com.claricejoias_ws.service.ProdutoService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -24,18 +25,11 @@ public class ProdutoController {
     @Autowired
     private ProdutoService produtoService;
 
-    @Operation(summary = "Listar todos os produtos", description = "Retorna uma lista completa de todas as peças cadastradas no catálogo.")
-    @ApiResponse(responseCode = "200", description = "Lista de produtos retornada com sucesso")
     @GetMapping
     public ResponseEntity<List<ProdutoDTO>> listarTodos() {
         return ResponseEntity.ok(produtoService.listarTodos());
     }
 
-    @Operation(summary = "Buscar produto por ID", description = "Busca uma peça específica baseada no seu identificador único.")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Produto encontrado com sucesso"),
-            @ApiResponse(responseCode = "404", description = "Produto não encontrado", content = @Content)
-    })
     @GetMapping("/{id}")
     public ResponseEntity<Produto> buscarPorId(@PathVariable Long id) {
         return produtoService.buscarPorId(id)
@@ -43,34 +37,33 @@ public class ProdutoController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    @Operation(summary = "Cadastrar novo produto", description = "Cadastra uma nova peça vinculada a uma subcategoria existente.")
-    @ApiResponse(responseCode = "201", description = "Produto cadastrado com sucesso")
-    @PostMapping
-    public ResponseEntity<Produto> criar(@RequestBody Produto produto) {
-        Produto novoProduto = produtoService.salvar(produto);
-        return ResponseEntity.status(HttpStatus.CREATED).body(novoProduto);
+    @Operation(summary = "Cadastrar novo produto com Imagem")
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Produto> criar(
+            @RequestPart("produto") Produto produto,
+            @RequestPart(value = "file", required = false) MultipartFile file) {
+        try {
+            Produto novoProduto = produtoService.salvar(produto, file);
+            return ResponseEntity.status(HttpStatus.CREATED).body(novoProduto);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
     }
 
-    @Operation(summary = "Atualizar produto existente", description = "Atualiza os dados de um produto previamente cadastrado pelo seu ID.")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Produto atualizado com sucesso"),
-            @ApiResponse(responseCode = "404", description = "Produto não encontrado para atualização", content = @Content)
-    })
-    @PutMapping("/{id}")
-    public ResponseEntity<Produto> atualizar(@PathVariable Long id, @RequestBody Produto produto) {
+    @Operation(summary = "Atualizar produto com Imagem")
+    @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Produto> atualizar(
+            @PathVariable Long id,
+            @RequestPart("produto") Produto produto,
+            @RequestPart(value = "file", required = false) MultipartFile file) {
         try {
-            Produto produtoAtualizado = produtoService.atualizar(id, produto);
+            Produto produtoAtualizado = produtoService.atualizar(id, produto, file);
             return ResponseEntity.ok(produtoAtualizado);
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
             return ResponseEntity.notFound().build();
         }
     }
 
-    @Operation(summary = "Excluir um produto", description = "Remove permanentemente uma peça do catálogo pelo seu ID.")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "204", description = "Produto excluído com sucesso (Sem conteúdo de retorno)"),
-            @ApiResponse(responseCode = "404", description = "Produto não encontrado", content = @Content)
-    })
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deletar(@PathVariable Long id) {
         try {

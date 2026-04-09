@@ -1,6 +1,5 @@
-package br.com.claricejoias_ws;
+package br.com.claricejoias_ws.service;
 
-import br.com.claricejoias_ws.config.ModelMapperConfig;
 import br.com.claricejoias_ws.dto.CategoriaDTO;
 import br.com.claricejoias_ws.model.Categoria;
 import br.com.claricejoias_ws.model.Subcategoria;
@@ -10,7 +9,6 @@ import jakarta.transaction.Transactional;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.ui.ModelMap;
 
 import java.util.List;
 import java.util.Optional;
