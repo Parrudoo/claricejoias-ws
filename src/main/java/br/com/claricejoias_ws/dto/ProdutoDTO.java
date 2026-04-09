@@ -12,7 +12,7 @@ public class ProdutoDTO {
     private String nome;
     private Double preco;
     private String img;
-    private SubcategoriaDTO subcategoria;
+//    private SubcategoriaDTO subcategoria;
     private String material;
 
 

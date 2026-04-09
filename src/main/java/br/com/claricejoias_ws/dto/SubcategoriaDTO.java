@@ -15,7 +15,7 @@ public class SubcategoriaDTO {
 
     private Long id;
     private String nome;
-//    private List<ProdutoDTO> itens;
-    private CategoriaDTO categoria;
+    private List<ProdutoDTO> itens;
+//    private CategoriaDTO categoria;
 
 }

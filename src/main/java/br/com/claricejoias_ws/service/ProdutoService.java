@@ -38,7 +38,7 @@ public class ProdutoService {
             produto.setPreco(produtoAtualizado.getPreco());
             produto.setImg(produtoAtualizado.getImg());
             produto.setMaterial(produtoAtualizado.getMaterial());
-            produto.setSubcategoria(produtoAtualizado.getSubcategoria());
+//            produto.setSubcategoria(produtoAtualizado.getSubcategoria());
             return produtoRepository.save(produto);
         }).orElseThrow(() -> new RuntimeException("Produto não encontrado com o ID: " + id));
     }

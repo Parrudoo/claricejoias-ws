@@ -14,6 +14,7 @@ public class Produto {
     private String img;
     private String material;
 
+
     @ManyToOne
     @JoinColumn(name = "subcategoria_id")
     private Subcategoria subcategoria;
