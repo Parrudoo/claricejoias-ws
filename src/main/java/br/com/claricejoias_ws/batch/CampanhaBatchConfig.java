@@ -68,9 +68,10 @@ public class CampanhaBatchConfig {
                 headers.setContentType(MediaType.APPLICATION_JSON);
                 headers.set("apikey", "claricejoias");
 
-                Map<String, String> body = Map.of(
+                // 1. Criamos a estrutura aninhada que a Evolution API v1.8.2 exige
+                Map<String, Object> body = Map.of(
                         "number", msg.getNumero(),
-                        "text", msg.getTexto()
+                        "textMessage", Map.of("text", msg.getTexto()) // <-- A MUDANÇA ESTÁ AQUI
                 );
 
                 try {
@@ -81,7 +82,7 @@ public class CampanhaBatchConfig {
                     Thread.sleep(30000);
                 } catch (Exception e) {
                     System.err.println("Falha ao enviar para " + msg.getNumero());
-                    System.err.println("Motivo do erro: " + e.getMessage()); // <-- Adicione esta linha!
+                    System.err.println("Motivo do erro: " + e.getMessage());
                 }
             }
         };

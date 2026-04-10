@@ -2,7 +2,7 @@ services:
   app:
     build: .
     ports:
-      - "8082:8080" # <-- ALTERADO AQUI (A porta externa agora é 8082)
+      - "8082:8080"
     environment:
       - SPRING_APPLICATION_NAME=claricejoias-ws
       - MINIO_URL=http://minio:9000
@@ -34,23 +34,12 @@ services:
       - db_data:/var/lib/postgresql/data
 
   evolution-api:
-    image: atendai/evolution-api:latest
+    image: atendai/evolution-api:v1.8.2
     ports:
       - "8081:8080"
     environment:
       - SERVER_URL=http://localhost:8081
-      - AUTHENTICATION_API_KEY=claricejoias
-      # Banco de Dados
-      - DATABASE_PROVIDER=postgresql
-      - DATABASE_CONNECTION_URI=postgresql://postgres:admin@db:5432/claricejoias?schema=public
-      - DATABASE_CONNECTION_CLIENT_NAME=evolution
-      # Desativar dependências externas para evitar Timed Out
-      - CACHE_REDIS_ENABLED=false
-      - CACHE_LOCAL_ENABLED=true
-      - RABBITMQ_ENABLED=false
-      - SQS_ENABLED=false
-    depends_on:
-      - db
+      - AUTHENTICATION_API_KEY=claricejoias # Sua senha atualizada
     volumes:
       - evolution_instances:/evolution/instances
 
