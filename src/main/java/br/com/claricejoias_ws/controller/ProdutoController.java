@@ -37,29 +37,33 @@ public class ProdutoController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    @Operation(summary = "Cadastrar novo produto com Imagem")
+    @Operation(summary = "Cadastrar novo produto com Múltiplas Imagens")
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Produto> criar(
             @RequestPart("produto") Produto produto,
-            @RequestPart(value = "file", required = false) MultipartFile file) {
+            @RequestPart(value = "files", required = false) List<MultipartFile> files) { // Ajustado para List<MultipartFile> e "files"
         try {
-            Produto novoProduto = produtoService.salvar(produto, file);
+            // O ProdutoService agora precisa estar preparado para receber a Lista
+            Produto novoProduto = produtoService.salvar(produto, files);
             return ResponseEntity.status(HttpStatus.CREATED).body(novoProduto);
         } catch (Exception e) {
+            e.printStackTrace(); // É bom deixar um printStackTrace aqui para ver possíveis erros no console
             return ResponseEntity.internalServerError().build();
         }
     }
 
-    @Operation(summary = "Atualizar produto com Imagem")
+    @Operation(summary = "Atualizar produto com Múltiplas Imagens")
     @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Produto> atualizar(
             @PathVariable Long id,
             @RequestPart("produto") Produto produto,
-            @RequestPart(value = "file", required = false) MultipartFile file) {
+            @RequestPart(value = "files", required = false) List<MultipartFile> files) { // Ajustado para List<MultipartFile> e "files"
         try {
-            Produto produtoAtualizado = produtoService.atualizar(id, produto, file);
+            // O ProdutoService agora precisa estar preparado para receber a Lista
+            Produto produtoAtualizado = produtoService.atualizar(id, produto, files);
             return ResponseEntity.ok(produtoAtualizado);
         } catch (Exception e) {
+            e.printStackTrace();
             return ResponseEntity.notFound().build();
         }
     }
