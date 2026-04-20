@@ -67,7 +67,10 @@ public class ProdutoService {
         return produtoRepository.findById(id).map(produto -> {
             produto.setNome(produtoAtualizado.getNome());
             produto.setPreco(produtoAtualizado.getPreco());
+            produto.setPrecoCusto(produtoAtualizado.getPrecoCusto());
+            produto.setCodigo(produtoAtualizado.getCodigo());
             produto.setMaterial(produtoAtualizado.getMaterial());
+            produto.setEstoque(produtoAtualizado.getEstoque());
             // produto.setSubcategoria(produtoAtualizado.getSubcategoria());
 
             // Se o usuário enviou arquivos novos na hora de editar

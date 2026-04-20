@@ -3,6 +3,7 @@ package br.com.claricejoias_ws.model;
 import jakarta.persistence.*;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -16,7 +17,12 @@ public class Produto {
 
     private String nome;
 
-    private Double preco;
+    private BigDecimal preco;
+
+    private BigDecimal precoCusto;
+    private Integer estoque;
+
+    private String codigo;
 
     // Campo atualizado para suportar uma lista de imagens
     @ElementCollection
