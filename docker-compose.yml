@@ -11,6 +11,8 @@ services:
       - MINIO_BUCKET_NAME=claricejoias
     depends_on:
       - minio
+      - db
+      - keycloak
 
   minio:
     image: minio/minio
@@ -42,6 +44,22 @@ services:
       - AUTHENTICATION_API_KEY=claricejoias # Sua senha atualizada
     volumes:
       - evolution_instances:/evolution/instances
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    command: start-dev
+    environment:
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://db:5432/claricejoias
+      - KC_DB_USERNAME=postgres
+      - KC_DB_PASSWORD=admin
+      - KC_HOSTNAME_STRICT=false
+    ports:
+      - "8083:8080" # Porta 8083 escolhida para não conflitar com a API ou Evolution
+    depends_on:
+      - db
 
 volumes:
   db_data:
