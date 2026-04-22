@@ -3,6 +3,7 @@ package br.com.claricejoias_ws.service;
 import jakarta.ws.rs.core.Response;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.representations.idm.CredentialRepresentation;
+import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -15,36 +16,64 @@ public class KeycloakUserService {
     @Autowired
     private Keycloak keycloak;
 
-    // Nome do Realm onde os seus clientes/loja ficam (Ajuste se o seu for diferente)
-    private final String REALM_NAME = "claricejoias-clientes";
+    private final String REALM_NAME = "claricejoias";
 
+    /**
+     * Fluxo para Clientes: Cadastro direto com senha definida no modal da loja.
+     */
     public void criarUsuarioCliente(String email, String senha, String nomeCompleto) {
+        UserRepresentation user = criarRepresentacaoBasica(email, nomeCompleto);
 
-        // 1. Configura os dados básicos do usuário
+        Response response = keycloak.realm(REALM_NAME).users().create(user);
+        processarResposta(response, senha, "cliente");
+    }
+
+    /**
+     * Fluxo para Funcionários (ADM): Cadastro sem senha.
+     * O Keycloak exigirá que ele crie a senha no primeiro acesso.
+     */
+    public void criarUsuarioFuncionario(String email, String nomeCompleto) {
+        UserRepresentation user = criarRepresentacaoBasica(email, nomeCompleto);
+
+        // A MÁGICA: Define que o usuário PRECISA resetar a senha ao entrar
+        user.setRequiredActions(Collections.singletonList("UPDATE_PASSWORD"));
+
+        Response response = keycloak.realm(REALM_NAME).users().create(user);
+
+        // Passamos null na senha pois ele mesmo vai criar
+        processarResposta(response, null, "ADMIN");
+    }
+
+    // --- MÉTODOS AUXILIARES PARA LIMPEZA DO CÓDIGO ---
+
+    private UserRepresentation criarRepresentacaoBasica(String email, String nomeCompleto) {
         UserRepresentation user = new UserRepresentation();
-        user.setUsername(email); // Usamos o e-mail como username para facilitar o login
+        user.setUsername(email);
         user.setEmail(email);
+        user.setEnabled(true);
+        user.setEmailVerified(false);
 
-        // Divide o nome completo em Primeiro Nome e Sobrenome (O Keycloak pede separado)
         String[] nomes = nomeCompleto.split(" ", 2);
         user.setFirstName(nomes[0]);
         if (nomes.length > 1) {
             user.setLastName(nomes[1]);
         }
+        return user;
+    }
 
-        user.setEnabled(true); // Já deixa o usuário ativo
-        user.setEmailVerified(false); // Pode colocar true se não for exigir validação de email
-
-        // 2. Dispara a criação no Keycloak
-        Response response = keycloak.realm(REALM_NAME).users().create(user);
-
+    private void processarResposta(Response response, String senha, String roleName) {
         if (response.getStatus() == 201) {
-            System.out.println("Usuário criado com sucesso no Keycloak!");
-
-            // 3. Opcional: Pegar o ID do usuário recém-criado para gravar a senha
             String userId = response.getLocation().getPath().replaceAll(".*/([^/]+)$", "$1");
-            definirSenha(userId, senha);
 
+            // Se foi enviada uma senha (caso do cliente), define agora
+            if (senha != null) {
+                definirSenha(userId, senha);
+            }
+
+            // Atribui o cargo (cliente ou admin)
+            atribuirRole(userId, roleName);
+
+            System.out.println("Usuário [" + roleName + "] criado com sucesso!");
         } else if (response.getStatus() == 409) {
             throw new RuntimeException("Este e-mail já está cadastrado.");
         } else {
@@ -54,11 +83,18 @@ public class KeycloakUserService {
 
     private void definirSenha(String userId, String senha) {
         CredentialRepresentation credential = new CredentialRepresentation();
-        credential.setTemporary(false); // Define que a senha é permanente (não pede pra trocar no 1º login)
+        credential.setTemporary(false);
         credential.setType(CredentialRepresentation.PASSWORD);
         credential.setValue(senha);
-
-        // Aplica a senha no usuário criado
         keycloak.realm(REALM_NAME).users().get(userId).resetPassword(credential);
+    }
+
+    private void atribuirRole(String userId, String roleName) {
+        try {
+            RoleRepresentation role = keycloak.realm(REALM_NAME).roles().get(roleName).toRepresentation();
+            keycloak.realm(REALM_NAME).users().get(userId).roles().realmLevel().add(Collections.singletonList(role));
+        } catch (Exception e) {
+            System.err.println("Erro ao atribuir role " + roleName + ". Certifique-se que ela existe no Keycloak.");
+        }
     }
 }

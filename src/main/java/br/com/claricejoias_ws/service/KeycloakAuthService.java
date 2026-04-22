@@ -1,6 +1,5 @@
 package br.com.claricejoias_ws.service;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
@@ -13,13 +12,14 @@ import java.util.Map;
 @Service
 public class KeycloakAuthService {
 
-    // Ajuste aqui se o nome do seu Realm de clientes for diferente
-    private final String REALM_NAME = "claricejoias-clientes";
+    //  MUDANÇA 1: Apontando para o realm unificado
+    private final String REALM_NAME = "claricejoias";
 
-    // O nome do Client que você configurou no Passo 1
+    // O nome do Client que você configurou
     private final String CLIENT_ID = "claricejoias-web";
 
-    private final String KEYCLOAK_TOKEN_URL = "http://localhost:8083/realms/" + REALM_NAME + "/protocol/openid-connect/token";
+    //  ATENÇÃO À PORTA: Se o seu Keycloak roda na 8180, mude o 8083 para 8180 aqui.
+    private final String KEYCLOAK_TOKEN_URL = "http://host.docker.internal:8083/realms/" + REALM_NAME + "/protocol/openid-connect/token";
 
     public Map<String, Object> realizarLogin(String email, String senha) {
         RestTemplate restTemplate = new RestTemplate();
