@@ -1,10 +1,17 @@
+version: '3.8'
+
 services:
   app:
     build: .
+    container_name: claricejoias-app
     ports:
       - "8082:8080"
     environment:
       - SPRING_APPLICATION_NAME=claricejoias-ws
+      # 👇 URLs ajustadas para a rede interna do Docker (usando os nomes dos serviços)
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/claricejoias
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak:8080/realms/claricejoias
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak:8080/realms/claricejoias/protocol/openid-connect/certs
       - MINIO_URL=http://minio:9000
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
@@ -16,6 +23,7 @@ services:
 
   minio:
     image: minio/minio
+    container_name: claricejoias-minio
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -23,9 +31,28 @@ services:
       - MINIO_ROOT_USER=minioadmin
       - MINIO_ROOT_PASSWORD=minioadmin
     command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+
+  # 👇 O SERVIÇO MÁGICO: Ele entra, cria o bucket e libera o acesso público
+  minio-setup:
+    image: minio/mc
+    container_name: claricejoias-minio-setup
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin;
+      /usr/bin/mc mb myminio/claricejoias || true;
+      /usr/bin/mc anonymous set download myminio/claricejoias;
+      echo 'Bucket claricejoias configurado como PUBLICO com sucesso!';
+      exit 0;
+      "
 
   db:
     image: postgres:14-alpine
+    container_name: claricejoias-db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: admin
@@ -37,16 +64,18 @@ services:
 
   evolution-api:
     image: atendai/evolution-api:v1.8.2
+    container_name: claricejoias-evolution
     ports:
       - "8081:8080"
     environment:
       - SERVER_URL=http://localhost:8081
-      - AUTHENTICATION_API_KEY=claricejoias # Sua senha atualizada
+      - AUTHENTICATION_API_KEY=claricejoias
     volumes:
       - evolution_instances:/evolution/instances
 
   keycloak:
     image: quay.io/keycloak/keycloak:latest
+    container_name: claricejoias-keycloak
     command: start-dev
     environment:
       - KC_BOOTSTRAP_ADMIN_USERNAME=admin
@@ -57,7 +86,7 @@ services:
       - KC_DB_PASSWORD=admin
       - KC_HOSTNAME_STRICT=false
     ports:
-      - "8083:8080" # Porta 8083 escolhida para não conflitar com a API ou Evolution
+      - "8083:8080"
     depends_on:
       - db
     volumes:
@@ -66,3 +95,4 @@ services:
 volumes:
   db_data:
   evolution_instances:
+  minio_data: # 👇 Volume adicionado para as imagens não sumirem
