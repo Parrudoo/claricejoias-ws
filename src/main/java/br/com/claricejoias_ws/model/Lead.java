@@ -2,7 +2,8 @@ package br.com.claricejoias_ws.model;
 
 import jakarta.persistence.*;
 import lombok.Data;
-import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Data
 @Entity
@@ -12,23 +13,21 @@ public class Lead {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
     private String nome;
-
-    @Column(nullable = false)
     private String whatsapp;
-
-    // Coluna para salvar o texto com os itens que ele selecionou
-    @Column(columnDefinition = "TEXT")
-    private String itensInteresse;
-
-    private LocalDateTime dataRegistro;
-
     private String email;
 
-    // Preenche a data automaticamente antes de salvar no banco
-    @PrePersist
-    protected void onCreate() {
-        this.dataRegistro = LocalDateTime.now();
+    // Novos campos para controle do painel
+    private Boolean ativo = true;
+    private Boolean comprou = false;
+
+    // Relacionamento com os itens de interesse
+    @OneToMany(mappedBy = "lead", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<LeadItem> itens = new ArrayList<>();
+
+    // Método utilitário para garantir o vínculo bidirecional
+    public void addItem(LeadItem item) {
+        itens.add(item);
+        item.setLead(this);
     }
 }

@@ -26,28 +26,51 @@ import java.util.Map;
 public class CampanhaBatchConfig {
 
     // 1. READER (Lê os Leads da Base de Dados)
-    // Lê os dados em blocos (chunks) para não sobrecarregar a memória
     @Bean
     public ItemReader<Lead> leadReader(LeadRepository repository) {
         return new RepositoryItemReaderBuilder<Lead>()
                 .name("leadReader")
                 .repository(repository)
-                .methodName("findAll") // Num cenário real, criaria um método como "findLeadsNaoContactados"
+                .methodName("findByAtivoTrueAndComprouFalse")
                 .sorts(Map.of("id", Sort.Direction.ASC))
                 .build();
     }
 
     // 2. PROCESSOR (Transforma o Lead numa Mensagem)
-    // Prepara o texto personalizado para cada cliente
     @Bean
     public ItemProcessor<Lead, MensagemDTO> leadProcessor() {
         return lead -> {
-            String texto = "Olá " + lead.getNome() + "! Aqui é da Clarice Joias. " +
-                    "Ainda tem interesse nestas peças fantásticas?\n" + lead.getItensInteresse();
+
+            // Regra de Negócio: Não enviar mensagens para leads inativos ou que já compraram
+            if (!lead.getAtivo() || lead.getComprou()) {
+                return null; // O Spring Batch ignora automaticamente retornos nulos (pula para o próximo)
+            }
+
+            // Constrói o texto iterando sobre a nova lista de LeadItem
+            StringBuilder resumoItens = new StringBuilder();
+            if (lead.getItens() != null && !lead.getItens().isEmpty()) {
+                lead.getItens().forEach(item -> {
+                    resumoItens.append("🔸 ").append(item.getQuantidade()).append("x ");
+
+                    // Valida se o produto existe para não quebrar o código
+                    if (item.getProduto() != null) {
+                        resumoItens.append(item.getProduto().getNome());
+                    } else {
+                        resumoItens.append("Joia Exclusiva");
+                    }
+                    resumoItens.append("\n");
+                });
+            } else {
+                resumoItens.append("nossas novidades!\n");
+            }
+
+            String texto = "Olá " + lead.getNome() + "! Aqui é da Clarice Joias.\n" +
+                    "Vimos que você separou algumas peças fantásticas recentemente:\n\n" +
+                    resumoItens.toString() +
+                    "\nTemos uma oferta especial liberada para você hoje. Gostaria de conferir?";
 
             String numeroCorreto = lead.getWhatsapp();
-            // Se o número não começar com 55, nós adicionamos!
-            if (!numeroCorreto.startsWith("55")) {
+            if (numeroCorreto != null && !numeroCorreto.startsWith("55")) {
                 numeroCorreto = "55" + numeroCorreto;
             }
 
@@ -56,10 +79,10 @@ public class CampanhaBatchConfig {
     }
 
     // 3. WRITER (Envia efetivamente a Mensagem)
-    // Faz a chamada à Evolution API
     @Bean
     public ItemWriter<MensagemDTO> leadWriter() {
         RestTemplate restTemplate = new RestTemplate();
+        // Lembre-se de ajustar a URL para apontar para a máquina correta se estiver rodando o Docker no servidor
         String evolutionApiUrl = "http://localhost:8081/message/sendText/claricejoias";
 
         return mensagens -> {
@@ -68,17 +91,16 @@ public class CampanhaBatchConfig {
                 headers.setContentType(MediaType.APPLICATION_JSON);
                 headers.set("apikey", "claricejoias");
 
-                // 1. Criamos a estrutura aninhada que a Evolution API v1.8.2 exige
                 Map<String, Object> body = Map.of(
                         "number", msg.getNumero(),
-                        "textMessage", Map.of("text", msg.getTexto()) // <-- A MUDANÇA ESTÁ AQUI
+                        "textMessage", Map.of("text", msg.getTexto())
                 );
 
                 try {
                     restTemplate.postForEntity(evolutionApiUrl, new HttpEntity<>(body, headers), String.class);
                     System.out.println("Mensagem enviada com sucesso para: " + msg.getNumero());
 
-                    // Pausa de 30 segundos entre mensagens para evitar bloqueio do WhatsApp!
+                    // Pausa de 30 segundos para evitar bloqueio do WhatsApp
                     Thread.sleep(30000);
                 } catch (Exception e) {
                     System.err.println("Falha ao enviar para " + msg.getNumero());
@@ -89,7 +111,6 @@ public class CampanhaBatchConfig {
     }
 
     // 4. STEP (Junta as 3 partes)
-    // Processa de 10 em 10 contactos
     @Bean
     public Step enviarMensagensStep(JobRepository jobRepository, PlatformTransactionManager transactionManager,
                                     ItemReader<Lead> reader, ItemProcessor<Lead, MensagemDTO> processor, ItemWriter<MensagemDTO> writer) {
@@ -109,7 +130,7 @@ public class CampanhaBatchConfig {
                 .build();
     }
 
-    // Classe auxiliar para transportar os dados entre o Processor e o Writer
+    // Classe auxiliar
     public static class MensagemDTO {
         private String numero;
         private String texto;

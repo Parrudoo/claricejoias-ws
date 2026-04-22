@@ -2,8 +2,11 @@ package br.com.claricejoias_ws.controller;
 
 import br.com.claricejoias_ws.dto.LeadRequestDTO;
 import br.com.claricejoias_ws.model.Lead;
+import br.com.claricejoias_ws.model.LeadItem;
+import br.com.claricejoias_ws.model.Produto;
 import br.com.claricejoias_ws.service.KeycloakUserService;
 import br.com.claricejoias_ws.service.LeadService;
+import br.com.claricejoias_ws.service.ProdutoService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +16,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/leads")
@@ -22,6 +26,7 @@ public class LeadController {
 
     private final LeadService service;
     private final KeycloakUserService keycloakUserService;
+    private final ProdutoService produtoService;
 
     @Operation(summary = "Capturar novo lead", description = "Recebe os dados, cria a conta no Keycloak (se solicitado) e salva o pedido no banco.")
     @PostMapping
@@ -41,22 +46,28 @@ public class LeadController {
         }
 
         // ==========================================
-        // ETAPA 2: SALVAR O PEDIDO NO SEU BANCO
+        // ETAPA 2: SALVAR O PEDIDO COM RELACIONAMENTO
         // ==========================================
         Lead lead = new Lead();
         lead.setNome(dto.getNome());
         lead.setWhatsapp(dto.getWhatsapp());
-        lead.setEmail(dto.getEmail()); // Salvando o e-mail no seu histórico
+        lead.setEmail(dto.getEmail());
+        lead.setAtivo(true);
+        lead.setComprou(false);
 
-        // Transforma o array do carrinho em um texto simples para salvar o histórico
         if (dto.getItens() != null && !dto.getItens().isEmpty()) {
-            StringBuilder resumo = new StringBuilder();
-            dto.getItens().forEach(item -> {
-                resumo.append(item.getQuantidade()).append("x ")
-                        .append(item.getNome())
-                        .append(" (R$ ").append(item.getPreco()).append(")\n");
+            dto.getItens().forEach(itemDto -> {
+                // Busca o produto real no banco para fazer a ligação
+                Optional<Produto> produtoOpt = produtoService.buscarPorId(itemDto.getProdutoId());
+
+                if (produtoOpt.isPresent()) {
+                    LeadItem leadItem = new LeadItem();
+                    leadItem.setProduto(produtoOpt.get());
+                    leadItem.setQuantidade(itemDto.getQuantidade());
+                    leadItem.setPrecoMomento(itemDto.getPreco());
+                    lead.addItem(leadItem); // Vincula ao lead
+                }
             });
-            lead.setItensInteresse(resumo.toString());
         }
 
         Lead salvo = service.salvar(lead);
@@ -67,5 +78,31 @@ public class LeadController {
     @GetMapping
     public ResponseEntity<List<Lead>> listarLeads() {
         return ResponseEntity.ok(service.listarTodos());
+    }
+
+    // ==========================================
+    // ETAPA 3: ENDPOINTS PARA O PAINEL REACT
+    // ==========================================
+
+    @Operation(summary = "Alternar status do lead", description = "Ativa ou desativa um lead existente pelo seu ID.")
+    @PutMapping("/{id}/status")
+    public ResponseEntity<Lead> alternarStatus(@PathVariable Long id) {
+        try {
+            Lead leadAtualizado = service.alternarStatus(id);
+            return ResponseEntity.ok(leadAtualizado);
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @Operation(summary = "Marcar lead como comprado", description = "Altera o status de compra do lead para verdadeiro.")
+    @PutMapping("/{id}/compra")
+    public ResponseEntity<Lead> marcarComoComprado(@PathVariable Long id) {
+        try {
+            Lead leadAtualizado = service.marcarComoComprado(id);
+            return ResponseEntity.ok(leadAtualizado);
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 }

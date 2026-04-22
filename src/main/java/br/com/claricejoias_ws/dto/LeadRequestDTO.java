@@ -10,14 +10,13 @@ public class LeadRequestDTO {
     private String email;
     private boolean criarConta;
     private String senha;
-    private List<ItemCarrinhoDTO> itens;
+    private List<ItemRequestDTO> itens;
 
+    // Classe interna pública e estática
     @Data
-    public static class ItemCarrinhoDTO {
-        private Long id;
-        private String nome;
+    public static class ItemRequestDTO {
+        private Long produtoId;
         private Integer quantidade;
-        private String email;
         private Double preco;
     }
 }
