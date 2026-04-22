@@ -6,6 +6,7 @@ import br.com.claricejoias_ws.model.Subcategoria;
 import br.com.claricejoias_ws.repository.CategoriaRepository;
 import br.com.claricejoias_ws.repository.SubCategoriaRepository;
 import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -15,16 +16,13 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class CategoriaService {
 
-    @Autowired
-    private CategoriaRepository repository;
-
-    @Autowired
-    private SubCategoriaRepository subCategoriaRepository;
-
-    @Autowired
-    private ModelMapper modelMapper;
+    private final CategoriaRepository repository;
+    private final SubCategoriaRepository subCategoriaRepository;
+    private final ModelMapper modelMapper;
+    private final AutenticacaoService autenticacaoService;
 
     public List<CategoriaDTO> listarTodas() {
 
@@ -61,6 +59,7 @@ public class CategoriaService {
                 .orElseThrow(() -> new RuntimeException("Categoria não encontrada com o ID: " + id));
 
         categoriaExistente.setNome(novosDados.getNome());
+        categoriaExistente.setLoginUsuario(autenticacaoService.getUsername());
         // Se houver subcategorias e você quiser atualizar em lote, a lógica entraria aqui
 
         return repository.save(categoriaExistente);

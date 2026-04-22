@@ -3,6 +3,7 @@ package br.com.claricejoias_ws.service;
 import br.com.claricejoias_ws.dto.ProdutoDTO;
 import br.com.claricejoias_ws.model.Produto;
 import br.com.claricejoias_ws.repository.ProdutoRepository;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,16 +16,14 @@ import java.util.Optional;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class ProdutoService {
 
-    @Autowired
-    private ProdutoRepository produtoRepository;
 
-    @Autowired
-    private ModelMapper mapper;
-
-    @Autowired
-    private MinioService minioService;
+    private final ProdutoRepository produtoRepository;
+    private final AutenticacaoService autenticacaoService;
+    private final ModelMapper mapper;
+    private final MinioService minioService;
 
     public List<ProdutoDTO> listarTodos() {
         return produtoRepository.findAll().stream()
@@ -57,6 +56,7 @@ public class ProdutoService {
             }
 
             // Em vez de setPathImg, agora você precisa setar uma lista
+            produto.setLoginUsuario(autenticacaoService.getUsername());
             produto.setImagens(caminhosImagens);
         }
 
@@ -71,6 +71,7 @@ public class ProdutoService {
             produto.setCodigo(produtoAtualizado.getCodigo());
             produto.setMaterial(produtoAtualizado.getMaterial());
             produto.setEstoque(produtoAtualizado.getEstoque());
+            produto.setLoginUsuario(autenticacaoService.getUsername());
             // produto.setSubcategoria(produtoAtualizado.getSubcategoria());
 
             // Se o usuário enviou arquivos novos na hora de editar

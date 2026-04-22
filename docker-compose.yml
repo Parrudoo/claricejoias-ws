@@ -60,6 +60,8 @@ services:
       - "8083:8080" # Porta 8083 escolhida para não conflitar com a API ou Evolution
     depends_on:
       - db
+    volumes:
+      - ./meu-tema-keycloak/clarice-joias:/opt/keycloak/themes/clarice-joias
 
 volumes:
   db_data:

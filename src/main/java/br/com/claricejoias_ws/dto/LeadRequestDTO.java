@@ -7,13 +7,17 @@ import java.util.List;
 public class LeadRequestDTO {
     private String nome;
     private String whatsapp;
-    private List<ItemCarrinhoDTO> carrinho;
+    private String email;
+    private boolean criarConta;
+    private String senha;
+    private List<ItemCarrinhoDTO> itens;
 
     @Data
     public static class ItemCarrinhoDTO {
         private Long id;
         private String nome;
         private Integer quantidade;
+        private String email;
         private Double preco;
     }
 }

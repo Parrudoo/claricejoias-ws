@@ -14,14 +14,10 @@ public class Produto {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
     private String nome;
-
     private BigDecimal preco;
-
     private BigDecimal precoCusto;
     private Integer estoque;
-
     private String codigo;
 
     // Campo atualizado para suportar uma lista de imagens
@@ -31,6 +27,8 @@ public class Produto {
     private List<String> imagens = new ArrayList<>();
 
     private String material;
+
+    private String loginUsuario;
 
     @ManyToOne
     @JoinColumn(name = "subcategoria_id")

@@ -24,6 +24,8 @@ public class Lead {
 
     private LocalDateTime dataRegistro;
 
+    private String email;
+
     // Preenche a data automaticamente antes de salvar no banco
     @PrePersist
     protected void onCreate() {
