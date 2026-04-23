@@ -1,5 +1,6 @@
 package br.com.claricejoias_ws.service;
 
+import br.com.claricejoias_ws.exceptions.RegraNegocioException; // 👇 IMPORTANTE: Importe a sua exceção!
 import jakarta.ws.rs.core.Response;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.representations.idm.CredentialRepresentation;
@@ -48,7 +49,7 @@ public class KeycloakUserService {
 
     private UserRepresentation criarRepresentacaoBasica(String email, String nomeCompleto) {
         UserRepresentation user = new UserRepresentation();
-        user.setUsername(email);
+        user.setUsername(nomeCompleto);
         user.setEmail(email);
         user.setEnabled(true);
         user.setEmailVerified(false);
@@ -75,9 +76,11 @@ public class KeycloakUserService {
 
             System.out.println("Usuário [" + roleName + "] criado com sucesso!");
         } else if (response.getStatus() == 409) {
-            throw new RuntimeException("Este e-mail já está cadastrado.");
+            // 👇 AQUI ESTÁ A CORREÇÃO! Usando a classe que o Interceptador escuta.
+            throw new RegraNegocioException("Este e-mail já está cadastrado.");
         } else {
-            throw new RuntimeException("Falha ao criar usuário no Keycloak. Status: " + response.getStatus());
+            // 👇 Também ajustei aqui para não vazar erro genérico pro Front
+            throw new RegraNegocioException("Falha ao criar usuário no Keycloak. Tente novamente mais tarde.");
         }
     }
 

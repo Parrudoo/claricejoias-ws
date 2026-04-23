@@ -15,7 +15,7 @@ public class LeadRequestDTO {
     // Classe interna pública e estática
     @Data
     public static class ItemRequestDTO {
-        private Long produtoId;
+        private Long id;
         private Integer quantidade;
         private Double preco;
     }
