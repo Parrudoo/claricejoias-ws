@@ -3,6 +3,8 @@ package br.com.claricejoias_ws.model;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
 
 @Data
 @Entity
@@ -17,7 +19,9 @@ public class LeadItem {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "lead_id")
-    @JsonIgnore // Evita loop infinito ao retornar JSON
+//    @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
     private Lead lead;
 
     @ManyToOne(fetch = FetchType.EAGER)

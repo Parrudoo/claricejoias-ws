@@ -2,6 +2,8 @@ package br.com.claricejoias_ws.batch;
 
 import br.com.claricejoias_ws.model.Lead;
 import br.com.claricejoias_ws.repository.LeadRepository;
+import br.com.claricejoias_ws.service.WhatsAppService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.job.builder.JobBuilder;
@@ -14,16 +16,15 @@ import org.springframework.batch.item.data.builder.RepositoryItemReaderBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.domain.Sort;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.web.client.RestTemplate;
 
-import java.util.Map;
+import java.util.Collections;
 
 @Configuration
+@RequiredArgsConstructor
 public class CampanhaBatchConfig {
+
+    private final LeadRepository leadRepository;
 
     // 1. READER (Lê os Leads da Base de Dados)
     @Bean
@@ -32,7 +33,8 @@ public class CampanhaBatchConfig {
                 .name("leadReader")
                 .repository(repository)
                 .methodName("findByAtivoTrueAndComprouFalse")
-                .sorts(Map.of("id", Sort.Direction.ASC))
+                .pageSize(100)
+                .sorts(Collections.singletonMap("id", Sort.Direction.ASC))
                 .build();
     }
 
@@ -46,7 +48,7 @@ public class CampanhaBatchConfig {
                 return null; // O Spring Batch ignora automaticamente retornos nulos (pula para o próximo)
             }
 
-            // Constrói o texto iterando sobre a nova lista de LeadItem
+            // Constrói o texto iterando sobre a lista de LeadItem
             StringBuilder resumoItens = new StringBuilder();
             if (lead.getItens() != null && !lead.getItens().isEmpty()) {
                 lead.getItens().forEach(item -> {
@@ -69,42 +71,30 @@ public class CampanhaBatchConfig {
                     resumoItens.toString() +
                     "\nTemos uma oferta especial liberada para você hoje. Gostaria de conferir?";
 
-            String numeroCorreto = lead.getWhatsapp();
-            if (numeroCorreto != null && !numeroCorreto.startsWith("55")) {
-                numeroCorreto = "55" + numeroCorreto;
-            }
-
-            return new MensagemDTO(numeroCorreto, texto);
+            // A formatação do "+55" foi removida daqui, pois o WhatsAppService já faz isso!
+            // Agora passamos o objeto Lead inteiro para o DTO
+            return new MensagemDTO(lead, texto);
         };
     }
 
     // 3. WRITER (Envia efetivamente a Mensagem)
     @Bean
-    public ItemWriter<MensagemDTO> leadWriter() {
-        RestTemplate restTemplate = new RestTemplate();
-        // Lembre-se de ajustar a URL para apontar para a máquina correta se estiver rodando o Docker no servidor
-        String evolutionApiUrl = "http://localhost:8081/message/sendText/claricejoias";
-
+    public ItemWriter<MensagemDTO> leadWriter(WhatsAppService whatsAppService) {
         return mensagens -> {
             for (MensagemDTO msg : mensagens) {
-                HttpHeaders headers = new HttpHeaders();
-                headers.setContentType(MediaType.APPLICATION_JSON);
-                headers.set("apikey", "claricejoias");
-
-                Map<String, Object> body = Map.of(
-                        "number", msg.getNumero(),
-                        "textMessage", Map.of("text", msg.getTexto())
-                );
-
                 try {
-                    restTemplate.postForEntity(evolutionApiUrl, new HttpEntity<>(body, headers), String.class);
-                    System.out.println("Mensagem enviada com sucesso para: " + msg.getNumero());
+                    // Chama o serviço passando a entidade Lead inteira
+                    whatsAppService.enviarMensagemTexto(msg.getLead(), msg.getTexto(),"BATCH");
 
-                    // Pausa de 30 segundos para evitar bloqueio do WhatsApp
+                    // Pausa de 30 segundos mantida APENAS para o processo em lote
                     Thread.sleep(30000);
+
+                } catch (IllegalStateException e) {
+                    // Captura a exceção de limite de tempo (cooldown) e avisa no log sem quebrar o batch
+                    System.out.println("Batch pulou o lead " + msg.getLead().getNome() + " - " + e.getMessage());
                 } catch (Exception e) {
-                    System.err.println("Falha ao enviar para " + msg.getNumero());
-                    System.err.println("Motivo do erro: " + e.getMessage());
+                    System.err.println("Erro no Batch ao processar o lead: " + msg.getLead().getNome());
+                    System.err.println("Motivo: " + e.getMessage());
                 }
             }
         };
@@ -130,16 +120,16 @@ public class CampanhaBatchConfig {
                 .build();
     }
 
-    // Classe auxiliar
+    // Classe auxiliar atualizada para segurar a entidade Lead
     public static class MensagemDTO {
-        private String numero;
+        private Lead lead;
         private String texto;
 
-        public MensagemDTO(String numero, String texto) {
-            this.numero = numero;
+        public MensagemDTO(Lead lead, String texto) {
+            this.lead = lead;
             this.texto = texto;
         }
-        public String getNumero() { return numero; }
+        public Lead getLead() { return lead; }
         public String getTexto() { return texto; }
     }
 }

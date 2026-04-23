@@ -1,11 +1,14 @@
 package br.com.claricejoias_ws.repository;
 
 import br.com.claricejoias_ws.model.Lead;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface LeadRepository extends JpaRepository<Lead, Long> {
 
@@ -13,5 +16,7 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
     @Query("SELECT DISTINCT l FROM Lead l JOIN l.itens i WHERE i.produto.subcategoria.id = :subcategoriaId AND l.ativo = true")
     List<Lead> findLeadsParaCampanhaPorSubcategoria(@Param("subcategoriaId") Long subcategoriaId);
 
-    List<Lead> findByAtivoTrueAndComprouFalse();
+    Page<Lead> findByAtivoTrueAndComprouFalse(Pageable pageable);
+
+    Optional<Lead> findByWhatsapp(String whatsapp);
 }

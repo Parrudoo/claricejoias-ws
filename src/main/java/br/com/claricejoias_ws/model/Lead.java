@@ -2,6 +2,9 @@ package br.com.claricejoias_ws.model;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,6 +27,11 @@ public class Lead {
     // Relacionamento com os itens de interesse
     @OneToMany(mappedBy = "lead", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<LeadItem> itens = new ArrayList<>();
+
+    // Adicione a relação com o histórico e ordene da mais antiga para a mais recente
+    @OneToMany(mappedBy = "lead", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("dataHoraDisparo ASC")
+    private List<HistoricoDisparo> historicoDisparos = new ArrayList<>();
 
     // Método utilitário para garantir o vínculo bidirecional
     public void addItem(LeadItem item) {

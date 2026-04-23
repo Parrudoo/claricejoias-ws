@@ -1,11 +1,14 @@
 package br.com.claricejoias_ws.dto;
 
 import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.List;
 
-@Data
+@Getter
+@Setter
 public class LeadDTO {
 
     private Long id;
@@ -14,5 +17,6 @@ public class LeadDTO {
     private String email;
     private Boolean ativo = true;
     private Boolean comprou = false;
+    private List<HistoricoDisparoDTO> historicoDisparos;
     private List<LeadItemDTO> itens = new ArrayList<>();
 }
