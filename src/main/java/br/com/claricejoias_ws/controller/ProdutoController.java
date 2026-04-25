@@ -4,9 +4,6 @@ import br.com.claricejoias_ws.dto.ProdutoDTO;
 import br.com.claricejoias_ws.model.Produto;
 import br.com.claricejoias_ws.service.ProdutoService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -30,9 +27,19 @@ public class ProdutoController {
         return ResponseEntity.ok(produtoService.listarTodos());
     }
 
+    @Operation(summary = "Buscar produto por ID interno")
     @GetMapping("/{id}")
     public ResponseEntity<Produto> buscarPorId(@PathVariable Long id) {
         return produtoService.buscarPorId(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    // CORREÇÃO AQUI: Adicionado o prefixo /codigo/ na rota para diferenciar do buscarPorId
+    @Operation(summary = "Buscar produto pelo Código de Barras/SKU")
+    @GetMapping("/codigo/{codigo}")
+    public ResponseEntity<ProdutoDTO> buscarPorCodigo(@PathVariable String codigo) {
+        return produtoService.buscarPorCodigo(codigo) // Lembre-se de implementar isso no ProdutoService
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -41,13 +48,12 @@ public class ProdutoController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Produto> criar(
             @RequestPart("produto") Produto produto,
-            @RequestPart(value = "files", required = false) List<MultipartFile> files) { // Ajustado para List<MultipartFile> e "files"
+            @RequestPart(value = "files", required = false) List<MultipartFile> files) {
         try {
-            // O ProdutoService agora precisa estar preparado para receber a Lista
             Produto novoProduto = produtoService.salvar(produto, files);
             return ResponseEntity.status(HttpStatus.CREATED).body(novoProduto);
         } catch (Exception e) {
-            e.printStackTrace(); // É bom deixar um printStackTrace aqui para ver possíveis erros no console
+            e.printStackTrace();
             return ResponseEntity.internalServerError().build();
         }
     }
@@ -57,9 +63,8 @@ public class ProdutoController {
     public ResponseEntity<Produto> atualizar(
             @PathVariable Long id,
             @RequestPart("produto") Produto produto,
-            @RequestPart(value = "files", required = false) List<MultipartFile> files) { // Ajustado para List<MultipartFile> e "files"
+            @RequestPart(value = "files", required = false) List<MultipartFile> files) {
         try {
-            // O ProdutoService agora precisa estar preparado para receber a Lista
             Produto produtoAtualizado = produtoService.atualizar(id, produto, files);
             return ResponseEntity.ok(produtoAtualizado);
         } catch (Exception e) {

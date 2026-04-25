@@ -5,6 +5,7 @@ import br.com.claricejoias_ws.model.Produto;
 import br.com.claricejoias_ws.repository.ProdutoRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.modelmapper.Converters;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -127,5 +128,11 @@ public class ProdutoService {
             // Após limpar os arquivos físicos, deleta o registro do banco de dados
             produtoRepository.delete(produto);
         });
+    }
+
+    public Optional<ProdutoDTO> buscarPorCodigo(String codigo) {
+        Optional<ProdutoDTO> produto = produtoRepository.findByCodigo(codigo)
+                .map(p -> mapper.map(p, ProdutoDTO.class));
+        return produto;
     }
 }
