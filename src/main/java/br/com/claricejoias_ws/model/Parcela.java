@@ -2,6 +2,8 @@ package br.com.claricejoias_ws.model;
 
 import jakarta.persistence.*;
 import lombok.Data;
+
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Data
@@ -18,7 +20,7 @@ public class Parcela {
     private Venda venda;
 
     private Integer numeroParcela; // 1, 2, 3...
-    private Double valor;
+    private BigDecimal valor;
 
     private LocalDate dataVencimento;
     private LocalDate dataPagamento; // Fica null até o cliente pagar

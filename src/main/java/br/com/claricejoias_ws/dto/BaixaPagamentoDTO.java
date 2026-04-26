@@ -7,5 +7,6 @@ public record BaixaPagamentoDTO(
         BigDecimal valorPago,
         String formaPagamento, // Ex: PIX, DINHEIRO, CARTAO
         LocalDate dataPagamento,
-        String observacao
+        String observacao,
+        Long parcelaId
 ) {}

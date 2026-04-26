@@ -34,6 +34,8 @@ public class SecurityConfigurations {
                         // Rotas Públicas (Catálogo e Imagens)
                         .requestMatchers(HttpMethod.GET, "/api/produtos/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/visitantes/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/visitantes/**").permitAll()
                         .requestMatchers("/arquivos/view/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()

@@ -5,7 +5,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @Builder
@@ -14,11 +16,13 @@ import java.time.LocalDateTime;
 public class MovimentacaoDTO {
     private String tipo; // "COMPRA" ou "PAGAMENTO"
     private LocalDateTime data;
-    private Double valor;
+    private BigDecimal valor;
     private String metodo;
-    // Campos da sua Compra
-    private Double valorEntrada;
-    private Integer parcelas;
+    private BigDecimal valorEntrada;
+    private BigDecimal valorDevido;
+    private List<ParcelaDTO> parcelas;
+
     // Campo do seu Pagamento
     private String observacao;
+    private List<PagamentoDTO> historicoPagamentos;
 }

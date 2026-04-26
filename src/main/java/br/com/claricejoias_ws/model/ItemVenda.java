@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 
+import java.math.BigDecimal;
+
 @Data
 @Entity
 public class ItemVenda {
@@ -13,8 +15,8 @@ public class ItemVenda {
     private Long id;
 
     private Integer quantidade;
-    private Double precoUnitario;
-    private Double subtotal;
+    private BigDecimal precoUnitario;
+    private BigDecimal subtotal;
 
     @ManyToOne
     @JoinColumn(name = "venda_id")

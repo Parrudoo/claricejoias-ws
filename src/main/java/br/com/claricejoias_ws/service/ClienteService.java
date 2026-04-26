@@ -1,17 +1,9 @@
 package br.com.claricejoias_ws.service;
 
-import br.com.claricejoias_ws.dto.BaixaPagamentoDTO;
-import br.com.claricejoias_ws.dto.ClienteResponseDTO;
-import br.com.claricejoias_ws.dto.CompraDetalheDTO;
-import br.com.claricejoias_ws.dto.MovimentacaoDTO;
+import br.com.claricejoias_ws.dto.*;
 import br.com.claricejoias_ws.exceptions.RegraNegocioException;
-import br.com.claricejoias_ws.model.Cliente;
-import br.com.claricejoias_ws.model.HistoricoCobranca;
-import br.com.claricejoias_ws.model.Pagamento;
-import br.com.claricejoias_ws.model.Venda;
-import br.com.claricejoias_ws.repository.ClienteRepository;
-import br.com.claricejoias_ws.repository.HistoricoCobrancaRepository;
-import br.com.claricejoias_ws.repository.PagamentoRepository;
+import br.com.claricejoias_ws.model.*;
+import br.com.claricejoias_ws.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +14,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 @Service
@@ -33,11 +26,13 @@ public class ClienteService {
     private final AutenticacaoService autenticacaoService;
     private final PagamentoRepository pagamentoRepository;
     private final WhatsAppService whatsAppService;
+    private final VendaRepository vendaRepository;
+    private final ParcelaRepository parcelaRepository;
+
 
     // Adicionado Transactional readOnly para otimizar a leitura
     @Transactional(readOnly = true)
     public List<ClienteResponseDTO> listarTodos() {
-        List<Cliente> clientes = clienteRepository.findAll();
         List<ClienteResponseDTO> list = clienteRepository.findAll().stream()
                 .map(this::converterParaDTO)
                 .collect(Collectors.toList());
@@ -56,16 +51,24 @@ public class ClienteService {
         Cliente cliente = clienteRepository.findById(clienteId)
                 .orElseThrow(() -> new RuntimeException("Cliente não encontrado!"));
 
-        // 1. Puxar a dívida diretamente do novo campo de saldo do cliente
-        double totalDevido = cliente.getSaldoDevedor() != null ? cliente.getSaldoDevedor().doubleValue() : 0.0;
+        // 1. Calcular a dívida real varrendo as vendas e somando as parcelas PENDENTES
+        BigDecimal totalDevido = cliente.getVendas().stream()
+                .flatMap(venda -> venda.getParcelasDetalhadas().stream())
+                // Filtra rigorosamente pelas parcelas que têm o status PENDENTE
+                .filter(parcela -> "PENDENTE".equalsIgnoreCase(parcela.getStatus()))
+                // Puxa o BigDecimal nativo, previnindo valores nulos com BigDecimal.ZERO
+                .map(parcela -> parcela.getValor() != null ? parcela.getValor() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // 2. Se a dívida for zero, não faz sentido cobrar
-        if (totalDevido <= 0) {
-            throw new RuntimeException("Este cliente não tem saldo devedor.");
+        // 2. Se a dívida for zero, bloqueia a cobrança
+        if (totalDevido.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("Este cliente não possui vendas com parcelas pendentes.");
         }
 
-        // 3. Montar a mensagem de cobrança
-        String valorFormatado = String.format("%.2f", totalDevido).replace(".", ",");
+        // 3. Formatar o valor e montar a mensagem de cobrança
+        // O Locale pt-BR já formata automaticamente com vírgula (ex: 1500,50)
+        String valorFormatado = String.format(new Locale("pt", "BR"), "%.2f", totalDevido);
+
         String mensagem = "Olá *" + cliente.getNome() + "*, tudo bem?\n\n" +
                 "Aqui é da *Clarice Joias* 💎.\n" +
                 "Consta em nosso sistema um saldo pendente no valor de *R$ " + valorFormatado + "*.\n\n" +
@@ -74,7 +77,7 @@ public class ClienteService {
         // 4. Disparar a mensagem pela Evolution API
         whatsAppService.enviarCobrancaCliente(cliente, mensagem, autenticacaoService.getUsername());
 
-        // 5. Se o disparo não falhar, salva no histórico quem fez a cobrança
+        // 5. Registrar o histórico da ação
         HistoricoCobranca historico = new HistoricoCobranca();
         historico.setCliente(cliente);
         historico.setFuncionario(funcionario);
@@ -84,79 +87,139 @@ public class ClienteService {
     }
 
     // Adicionado Transactional pois precisamos carregar a lista de vendas (Lazy)
-    @Transactional(readOnly = true)
     public List<MovimentacaoDTO> buscarHistoricoCompras(Long clienteId) {
         Cliente cliente = clienteRepository.findById(clienteId)
                 .orElseThrow(() -> new RuntimeException("Cliente não encontrado!"));
 
         List<MovimentacaoDTO> extrato = new ArrayList<>();
 
-        // Inclui as Compras (🛒) mantendo seus detalhes originais
         if (cliente.getVendas() != null) {
-            cliente.getVendas().forEach(v -> extrato.add(
-                    MovimentacaoDTO.builder()
-                            .tipo("COMPRA")
-                            .data(v.getDataVenda())
-                            .valor(v.getTotal())
-                            .metodo(v.getMetodoPagamento())
-                            .valorEntrada(v.getValorEntrada())
-                            .parcelas(v.getParcelas())
-                            .build()
-            ));
+            cliente.getVendas().forEach(venda -> {
+
+                // 1. Mapeia os pagamentos vinculados EXCLUSIVAMENTE a esta venda
+                List<PagamentoDTO> pagamentosDaVenda = new ArrayList<>();
+
+                if (venda.getPagamentos() != null) {
+                    venda.getPagamentos().forEach(p -> pagamentosDaVenda.add(
+                            PagamentoDTO.builder()
+                                    .data(p.getDataPagamento().atStartOfDay())
+                                    // 👇 Removido o .doubleValue() assumindo que PagamentoDTO já usa BigDecimal
+                                    .valor(p.getValorPago())
+                                    .metodo(p.getFormaPagamento())
+                                    .observacao(p.getObservacao())
+                                    .build()
+                    ));
+                }
+
+                // Ordenar os pagamentos dentro da compra do mais recente para o mais antigo
+                pagamentosDaVenda.sort(Comparator.comparing(PagamentoDTO::getData).reversed());
+
+                // 2. 👇 NOVA PARTE: Mapeia as parcelas detalhadas da Venda
+                // 👇 Mudamos de MovimentacaoDTO.ParcelaDTO para apenas ParcelaDTO
+                List<ParcelaDTO> listaParcelasDTO = new ArrayList<>();
+                if (venda.getParcelasDetalhadas() != null) {
+                    listaParcelasDTO = venda.getParcelasDetalhadas().stream().map(p ->
+                            ParcelaDTO.builder() // 👈 Chama o builder direto do novo arquivo
+                                    .id(p.getId())
+                                    .numeroParcela(p.getNumeroParcela())
+                                    .valor(p.getValor())
+                                    .dataVencimento(p.getDataVencimento())
+                                    .dataPagamento(p.getDataPagamento())
+                                    .status(p.getStatus())
+                                    .build()
+                    ).collect(Collectors.toList());
+                }
+
+                // 3. Monta o DTO da Compra e anexa as listas nela
+                extrato.add(
+                        MovimentacaoDTO.builder()
+                                .tipo("COMPRA")
+                                .data(venda.getDataVenda())
+                                .valor(venda.getTotal())
+                                .metodo(venda.getMetodoPagamento())
+                                .valorEntrada(venda.getValorEntrada())
+                                .valorDevido(venda.getValorDevido()) // Adicionado para o React saber se quitou
+                                .parcelas(listaParcelasDTO) // 🔗 Agora envia a Lista, não o Integer!
+                                .historicoPagamentos(pagamentosDaVenda)
+                                .build()
+                );
+            });
         }
 
-        // Inclui os Pagamentos (💰) que o cliente já fez
-        if (cliente.getPagamentos() != null) {
-            cliente.getPagamentos().forEach(p -> extrato.add(
-                    MovimentacaoDTO.builder()
-                            .tipo("PAGAMENTO")
-                            .data(p.getDataPagamento().atStartOfDay())
-                            .valor(p.getValorPago().doubleValue())
-                            .metodo(p.getFormaPagamento())
-                            .observacao(p.getObservacao())
-                            .build()
-            ));
-        }
-
-        // Ordena do mais recente para o mais antigo
+        // 4. Ordena as compras da mais recente para a mais antiga
         extrato.sort(Comparator.comparing(MovimentacaoDTO::getData).reversed());
+
         return extrato;
     }
 
     // ==========================================================
     // CONVERSORES (Mappers)
     // ==========================================================
+
     private ClienteResponseDTO converterParaDTO(Cliente cliente) {
         ClienteResponseDTO dto = new ClienteResponseDTO();
         dto.setId(cliente.getId());
         dto.setNome(cliente.getNome());
         dto.setTelefone(cliente.getTelefone());
 
-        // 1. Soma o valor devido de todas as vendas
-        double totalVendasFiado = 0.0;
+        // 1. Soma o valor devido de todas as vendas (Tudo limpo e direto)
+        BigDecimal totalVendasFiado = BigDecimal.ZERO;
         if (cliente.getVendas() != null) {
             totalVendasFiado = cliente.getVendas().stream()
                     .filter(v -> v.getValorDevido() != null)
-                    .mapToDouble(Venda::getValorDevido)
-                    .sum();
+                    .map(Venda::getValorDevido) // Mapeia direto o BigDecimal
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
         }
 
-        // 2. Soma todos os pagamentos (baixas) que o cliente já fez
-        double totalPagamentosRealizados = 0.0;
+        // 2. Soma todos os pagamentos realizados
+        BigDecimal totalPagamentosRealizados = BigDecimal.ZERO;
         if (cliente.getPagamentos() != null) {
             totalPagamentosRealizados = cliente.getPagamentos().stream()
                     .filter(p -> p.getValorPago() != null)
-                    .mapToDouble(p -> p.getValorPago().doubleValue())
-                    .sum();
+                    .map(Pagamento::getValorPago) // Mapeia direto o BigDecimal
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
         }
 
-        // 3. O saldo real é a diferença
-        double saldoReal = totalVendasFiado - totalPagamentosRealizados;
+        if (cliente.getVendas() != null) {
+            List<ClienteResponseDTO.VendaResponseDTO> vendasDTO = cliente.getVendas().stream()
+                    .map(venda -> {
+                        ClienteResponseDTO.VendaResponseDTO vDto = new ClienteResponseDTO.VendaResponseDTO();
+                        vDto.setId(venda.getId());
+                        vDto.setDataVenda(venda.getDataVenda());
+                        vDto.setTotal(venda.getTotal());
+                        vDto.setMetodoPagamento(venda.getMetodoPagamento());
+                        vDto.setValorEntrada(venda.getValorEntrada());
+                        vDto.setValorDevido(venda.getValorDevido());
 
-        // Garante que o saldo não fique negativo na tela por arredondamento
-        dto.setValorDevido(Math.max(0, saldoReal));
+                        // Mapeia as parcelas desta venda
+                        if (venda.getParcelasDetalhadas() != null) {
+                            List<ClienteResponseDTO.ParcelaResponseDTO> parcelasDTO = venda.getParcelasDetalhadas().stream()
+                                    .map(parcela -> {
+                                        ClienteResponseDTO.ParcelaResponseDTO pDto = new ClienteResponseDTO.ParcelaResponseDTO();
+                                        pDto.setId(parcela.getId());
+                                        pDto.setNumeroParcela(parcela.getNumeroParcela());
+                                        pDto.setValor(parcela.getValor());
+                                        pDto.setDataVencimento(parcela.getDataVencimento());
+                                        pDto.setDataPagamento(parcela.getDataPagamento());
+                                        pDto.setStatus(parcela.getStatus());
+                                        return pDto;
+                                    }).collect(Collectors.toList());
+                            vDto.setParcelas(parcelasDTO);
+                        }
 
-        // Histórico de cobrança...
+                        return vDto;
+                    }).collect(Collectors.toList());
+
+            dto.setVendas(vendasDTO);
+        }
+
+        // 3. Calcula o saldo real (Vendas - Pagamentos)
+        BigDecimal saldoReal = totalVendasFiado.subtract(totalPagamentosRealizados);
+
+        // Garante que o saldo não fique negativo na tela e joga no DTO
+        dto.setValorDevido(saldoReal.max(BigDecimal.ZERO));
+
+        // Histórico de cobrança
         historicoCobrancaRepository.findFirstByClienteIdOrderByDataHoraDesc(cliente.getId())
                 .ifPresent(historico -> {
                     ClienteResponseDTO.UltimaCobrancaDTO cobrancaDTO = new ClienteResponseDTO.UltimaCobrancaDTO();
@@ -172,59 +235,129 @@ public class ClienteService {
         return CompraDetalheDTO.builder()
                 .id(venda.getId())
                 .data(venda.getDataVenda())
-                .total(venda.getTotal())
+                // Aproveitei para colocar uma proteção contra nulo no total também, por segurança
+                .total(venda.getTotal() != null ? venda.getTotal() : BigDecimal.ZERO)
                 .metodoPagamento(venda.getMetodoPagamento())
-                .valorEntrada(venda.getValorEntrada() != null ? venda.getValorEntrada() : 0.0)
+                // 👇 Substituído 0.0 por BigDecimal.ZERO
+                .valorEntrada(venda.getValorEntrada() != null ? venda.getValorEntrada() : BigDecimal.ZERO)
                 .parcelas(venda.getParcelas() != null ? venda.getParcelas() : 1)
                 .build();
     }
 
+
+
     @Transactional
     public void registrarPagamento(Long clienteId, BaixaPagamentoDTO dto) {
+
+        // 👇 SE O FRONTEND MANDAR O ID DA PARCELA, EXECUTA O PAGAMENTO INDIVIDUAL
+        if (dto.parcelaId() != null) {
+            pagarParcelaEspecifica(dto.parcelaId(), dto);
+            return; // Sai do método para não rodar a lógica FIFO
+        }
+
+        // ====================================================================
+        // LÓGICA FIFO (O pagamento geral que você já tinha)
+        // ====================================================================
         Cliente cliente = clienteRepository.findById(clienteId)
-                .orElseThrow(() -> new RuntimeException("Cliente não encontrado com ID: " + clienteId));
+                .orElseThrow(() -> new RuntimeException("Cliente não encontrado"));
 
-        // 1. Calcular o saldo devedor real somando as vendas fiadas
-        BigDecimal saldoRealCalculado = BigDecimal.ZERO;
-        if (cliente.getVendas() != null) {
-            double somaVendas = cliente.getVendas().stream()
-                    .filter(v -> v.getValorDevido() != null)
-                    .mapToDouble(Venda::getValorDevido)
-                    .sum();
-            saldoRealCalculado = BigDecimal.valueOf(somaVendas);
+        BigDecimal valorPago = dto.valorPago();
+        if (valorPago == null || valorPago.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("O valor do pagamento deve ser maior que zero.");
         }
 
-        // 2. Validações de negócio
-        if (dto.valorPago() == null || dto.valorPago().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new RegraNegocioException("O valor do pagamento deve ser maior que zero.");
+        List<Venda> vendasPendentes = cliente.getVendas().stream()
+                .filter(v -> v.getValorDevido() != null && v.getValorDevido().compareTo(BigDecimal.ZERO) > 0)
+                .sorted(Comparator.comparing(Venda::getDataVenda))
+                .collect(Collectors.toList());
+
+        BigDecimal montanteDisponivel = valorPago;
+
+        for (Venda venda : vendasPendentes) {
+            if (montanteDisponivel.compareTo(BigDecimal.ZERO) <= 0) break;
+
+            BigDecimal dividaVenda = venda.getValorDevido();
+            BigDecimal abateVenda = montanteDisponivel.min(dividaVenda);
+
+            BigDecimal valorParaParcelas = abateVenda;
+            List<Parcela> parcelasPendentes = venda.getParcelasDetalhadas().stream()
+                    .filter(p -> "PENDENTE".equalsIgnoreCase(p.getStatus()))
+                    .sorted(Comparator.comparing(Parcela::getNumeroParcela))
+                    .collect(Collectors.toList());
+
+            for (Parcela parcela : parcelasPendentes) {
+                if (valorParaParcelas.compareTo(BigDecimal.ZERO) <= 0) break;
+
+                BigDecimal valorParcela = parcela.getValor();
+
+                if (valorParaParcelas.compareTo(valorParcela) >= 0) {
+                    parcela.setStatus("PAGA");
+                    parcela.setDataPagamento(dto.dataPagamento() != null ? dto.dataPagamento() : LocalDate.now());
+                    valorParaParcelas = valorParaParcelas.subtract(valorParcela);
+                } else {
+                    parcela.setValor(valorParcela.subtract(valorParaParcelas));
+                    valorParaParcelas = BigDecimal.ZERO;
+                }
+            }
+
+            venda.setValorDevido(dividaVenda.subtract(abateVenda));
+            vendaRepository.save(venda);
+
+            Pagamento historico = new Pagamento();
+            historico.setCliente(cliente);
+            historico.setVenda(venda);
+            historico.setValorPago(abateVenda);
+            historico.setFormaPagamento(dto.formaPagamento());
+            historico.setDataPagamento(dto.dataPagamento() != null ? dto.dataPagamento() : LocalDate.now());
+            historico.setObservacao(dto.observacao());
+            pagamentoRepository.save(historico);
+
+            montanteDisponivel = montanteDisponivel.subtract(abateVenda);
         }
 
-        // Comparar com o saldo que acabamos de calcular das vendas
-        if (dto.valorPago().compareTo(saldoRealCalculado) > 0) {
-            throw new RegraNegocioException(
-                    "O valor do pagamento não pode ser maior que o saldo devedor atual (R$ " + saldoRealCalculado + ")."
-            );
+        BigDecimal saldoAnterior = cliente.getSaldoDevedor() != null ? cliente.getSaldoDevedor() : BigDecimal.ZERO;
+        cliente.setSaldoDevedor(saldoAnterior.subtract(valorPago).max(BigDecimal.ZERO));
+        clienteRepository.save(cliente);
+    }
+
+    // 👇 NOVO MÉTODO AUXILIAR PARA PAGAR A PARCELA EXATA
+    private void pagarParcelaEspecifica(Long parcelaId, BaixaPagamentoDTO dto) {
+        Parcela parcela = parcelaRepository.findById(parcelaId)
+                .orElseThrow(() -> new RuntimeException("Parcela não encontrada"));
+
+        if ("PAGA".equalsIgnoreCase(parcela.getStatus())) {
+            throw new RuntimeException("Esta parcela já está paga.");
         }
 
-        // 3. Atualizar o saldo_devedor do cliente (o campo resumo no banco)
-        // Mesmo que você use o cálculo das vendas no Dashboard, é bom manter esse campo
-        // atualizado para performance futura.
-        BigDecimal novoSaldo = saldoRealCalculado.subtract(dto.valorPago());
-        cliente.setSaldoDevedor(novoSaldo);
+        // 1. Marca a parcela como PAGA
+        parcela.setStatus("PAGA");
+        parcela.setDataPagamento(dto.dataPagamento() != null ? dto.dataPagamento() : LocalDate.now());
+        parcelaRepository.save(parcela);
+
+        // 2. Abate o valor na Venda associada
+        Venda venda = parcela.getVenda();
+        venda.setValorDevido(venda.getValorDevido().subtract(parcela.getValor()).max(BigDecimal.ZERO));
+        vendaRepository.save(venda);
+
+        // 3. Abate o valor na dívida geral do Cliente
+        Cliente cliente = venda.getCliente();
+        BigDecimal saldoAnterior = cliente.getSaldoDevedor() != null ? cliente.getSaldoDevedor() : BigDecimal.ZERO;
+        cliente.setSaldoDevedor(saldoAnterior.subtract(parcela.getValor()).max(BigDecimal.ZERO));
         clienteRepository.save(cliente);
 
-        // 4. Registrar o histórico financeiro
+        // 4. Salva o recibo (Histórico)
         Pagamento historico = new Pagamento();
         historico.setCliente(cliente);
-        historico.setValorPago(dto.valorPago());
+        historico.setVenda(venda);
+        historico.setValorPago(parcela.getValor());
         historico.setFormaPagamento(dto.formaPagamento());
-        historico.setObservacao(dto.observacao());
         historico.setDataPagamento(dto.dataPagamento() != null ? dto.dataPagamento() : LocalDate.now());
 
-        pagamentoRepository.save(historico);
+        // Anota na observação qual parcela foi paga manualmente
+        String obs = dto.observacao() != null ? dto.observacao() : "";
+        historico.setObservacao("Pagamento direto da " + parcela.getNumeroParcela() + "ª parcela. " + obs);
 
-        // DICA: Se você quiser abater o valor diretamente das vendas (diminuindo o valorDevido delas),
-        // seria necessário uma lógica extra para percorrer as vendas e ir subtraindo até zerar o valor pago.
+        pagamentoRepository.save(historico);
     }
 
 //    @Transactional(readOnly = true)

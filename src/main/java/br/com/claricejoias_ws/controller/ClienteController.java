@@ -1,6 +1,7 @@
 package br.com.claricejoias_ws.controller;
 
 import br.com.claricejoias_ws.dto.*;
+import br.com.claricejoias_ws.service.AutenticacaoService;
 import br.com.claricejoias_ws.service.ClienteService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,6 +19,7 @@ import java.util.Map;
 public class ClienteController {
 
     private final ClienteService clienteService;
+    private final AutenticacaoService autenticacaoService;
 
     @Operation(summary = "Listar todos os clientes cadastrados")
     @GetMapping
@@ -33,17 +35,14 @@ public class ClienteController {
 
     @Operation(summary = "Registrar um histórico de cobrança realizada por um funcionário")
     @PostMapping("/{id}/cobranca")
-    public ResponseEntity<Void> registrarCobranca(
+    public ResponseEntity<String> registrarCobranca(
             @PathVariable Long id,
             @RequestBody Map<String, String> payload) {
 
-        String funcionario = payload.get("funcionario");
-        try {
-            clienteService.registrarCobranca(id, funcionario);
-            return ResponseEntity.ok().build();
-        } catch (RuntimeException e) {
-            return ResponseEntity.notFound().build();
-        }
+        clienteService.registrarCobranca(id, autenticacaoService.getUsername());
+
+        return ResponseEntity.ok().build();
+
     }
 
     // ==========================================================

@@ -3,6 +3,7 @@ package br.com.claricejoias_ws.model;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,7 +26,7 @@ public class Venda {
     private LocalDateTime dataVenda;
 
     @Column(nullable = false)
-    private Double total;
+    private BigDecimal total;
 
     @Column(name = "metodo_pagamento", nullable = false)
     private String metodoPagamento; // pix, cartao, especie, fiado
@@ -33,15 +34,16 @@ public class Venda {
     private Integer parcelas;
 
     @Column(name = "valor_recebido")
-    private Double valorRecebido;
+    private BigDecimal valorRecebido;
 
-    private Double troco;
+    private BigDecimal troco;
 
+    // 👇 CORREÇÃO 1: Trocado de Double para BigDecimal
     @Column(name = "valor_entrada")
-    private Double valorEntrada = 0.0;
+    private BigDecimal valorEntrada = BigDecimal.ZERO;
 
     @Column(name = "valor_devido")
-    private Double valorDevido = 0.0;
+    private BigDecimal valorDevido = BigDecimal.ZERO;
 
     // Relacionamento com os itens da venda
     @OneToMany(mappedBy = "venda", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -54,19 +56,22 @@ public class Venda {
     @OneToMany(mappedBy = "venda", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Parcela> parcelasDetalhadas = new ArrayList<>();
 
+    @OneToMany(mappedBy = "venda", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Pagamento> pagamentos = new ArrayList<>();
+
     /**
      * Helper method para calcular o valor devido antes de salvar.
-     * Se for fiado, o devido é o total menos a entrada.
-     * Se for outro método, o devido é zero.
      */
-    @PrePersist
-    @PreUpdate
+    @PrePersist // 👇 CORREÇÃO 3: Removido o @PreUpdate para não estragar os pagamentos
     public void calcularValores() {
         if ("fiado".equalsIgnoreCase(this.metodoPagamento)) {
-            double entrada = (this.valorEntrada != null) ? this.valorEntrada : 0.0;
-            this.valorDevido = this.total - entrada;
+            // 👇 CORREÇÃO 2: Matemática do BigDecimal do jeito certo
+            BigDecimal entrada = (this.valorEntrada != null) ? this.valorEntrada : BigDecimal.ZERO;
+            BigDecimal totalVenda = (this.total != null) ? this.total : BigDecimal.ZERO;
+
+            this.valorDevido = totalVenda.subtract(entrada);
         } else {
-            this.valorDevido = 0.0;
+            this.valorDevido = BigDecimal.ZERO;
         }
     }
 }

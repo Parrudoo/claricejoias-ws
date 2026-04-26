@@ -8,6 +8,9 @@ import br.com.claricejoias_ws.repository.VendaRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
@@ -28,41 +31,49 @@ public class VendaService {
     public Venda registrarVenda(VendaRequestDTO dto) {
         Venda venda = new Venda();
         venda.setDataVenda(LocalDateTime.now());
-        venda.setTotal(dto.getTotal());
 
-        // Dados base de pagamento vindos do DTO
+        // Garante que o total não seja nulo
+        BigDecimal totalVenda = dto.getTotal() != null ? dto.getTotal() : BigDecimal.ZERO;
+        venda.setTotal(totalVenda);
+
+        // Dados base de pagamento vindos do DTO (Certifique-se que no DTO eles também são BigDecimal)
         String metodo = dto.getPagamento().getMetodo();
-        Double valorEntradaInput = dto.getPagamento().getValorEntrada();
-        Double valorRecebidoInput = dto.getPagamento().getValorRecebido();
+        BigDecimal valorEntradaInput = dto.getPagamento().getValorEntrada();
+        BigDecimal valorRecebidoInput = dto.getPagamento().getValorRecebido();
         Integer parcelasInput = dto.getPagamento().getParcelas();
 
         venda.setMetodoPagamento(metodo);
-        venda.setParcelas(parcelasInput != null ? parcelasInput : 1);
+        venda.setParcelas(parcelasInput != null && parcelasInput > 0 ? parcelasInput : 1);
 
-        // 1. CORREÇÃO: Garante que o valor da entrada nunca seja nulo e seta na venda
-        double valorEntradaSeguro = (valorEntradaInput != null) ? valorEntradaInput : 0.0;
+        // 1. CORREÇÃO: Garante que o valor da entrada nunca seja nulo
+        BigDecimal valorEntradaSeguro = (valorEntradaInput != null) ? valorEntradaInput : BigDecimal.ZERO;
         venda.setValorEntrada(valorEntradaSeguro);
 
         // Lógica de Troco (Apenas para espécie)
         if ("especie".equalsIgnoreCase(metodo) && valorRecebidoInput != null) {
             venda.setValorRecebido(valorRecebidoInput);
-            venda.setTroco(Math.max(0.0, valorRecebidoInput - dto.getTotal()));
+            // Calcula o troco e usa o .max(ZERO) para evitar troco negativo
+            venda.setTroco(valorRecebidoInput.subtract(totalVenda).max(BigDecimal.ZERO));
         } else {
-            venda.setValorRecebido(dto.getTotal());
-            venda.setTroco(0.0);
+            venda.setValorRecebido(totalVenda);
+            venda.setTroco(BigDecimal.ZERO);
         }
 
         // Lógica de Entrada e Saldo Devedor (Fiado)
         if ("fiado".equalsIgnoreCase(metodo)) {
-            // Agora o getValorEntrada() tem um número garantido, então não dará NullPointerException
-            Double saldoDevedor = venda.getTotal() - venda.getValorEntrada();
+            BigDecimal saldoDevedor = totalVenda.subtract(valorEntradaSeguro);
             venda.setValorDevido(saldoDevedor);
 
             // GERA AS PARCELAS
             int qtdParcelas = venda.getParcelas();
-            double valorPorParcela = saldoDevedor / qtdParcelas;
-            List<Parcela> listaParcelas = new ArrayList<>();
 
+            // 👇 O SEGREDO DA DIVISÃO COM BIGDECIMAL:
+            // Divide pelo número de parcelas, força 2 casas decimais, e arredonda padrão (ex: 33.33)
+            BigDecimal valorPorParcela = saldoDevedor.divide(
+                    BigDecimal.valueOf(qtdParcelas), 2, RoundingMode.HALF_UP
+            );
+
+            List<Parcela> listaParcelas = new ArrayList<>();
             LocalDate dataAtual = LocalDate.now();
 
             for (int i = 1; i <= qtdParcelas; i++) {
@@ -72,16 +83,17 @@ public class VendaService {
                 parcela.setValor(valorPorParcela);
                 parcela.setStatus("PENDENTE");
 
-                // Joga o vencimento para o último dia do próximo mês, depois do outro, etc.
+                // Joga o vencimento para o último dia do próximo mês
                 LocalDate vencimento = dataAtual.plusMonths(i).with(TemporalAdjusters.lastDayOfMonth());
                 parcela.setDataVencimento(vencimento);
 
                 listaParcelas.add(parcela);
             }
+
             venda.setParcelasDetalhadas(listaParcelas);
 
         } else {
-            venda.setValorDevido(0.0);
+            venda.setValorDevido(BigDecimal.ZERO);
         }
 
         // Mapeamento de Itens
@@ -93,8 +105,15 @@ public class VendaService {
             item.setVenda(venda);
             item.setProduto(produto);
             item.setQuantidade(itemDto.getQuantidade());
-            item.setPrecoUnitario(itemDto.getPreco());
-            item.setSubtotal(itemDto.getPreco() * itemDto.getQuantidade());
+
+            // Puxa o preço do DTO (Garantindo que é BigDecimal)
+            BigDecimal precoUnitario = itemDto.getPreco() != null ? itemDto.getPreco() : BigDecimal.ZERO;
+            item.setPrecoUnitario(precoUnitario);
+
+            // Multiplica usando o .multiply() e transformando a quantidade em BigDecimal
+            BigDecimal subtotal = precoUnitario.multiply(BigDecimal.valueOf(itemDto.getQuantidade()));
+            item.setSubtotal(subtotal);
+
             return item;
         }).collect(Collectors.toList());
 
@@ -110,6 +129,13 @@ public class VendaService {
                         return clienteRepository.save(novo);
                     });
             venda.setCliente(cliente);
+
+            // 👇 IMPORTANTE: Se o cliente compra fiado, a gente precisa adicionar na dívida geral dele
+            if ("fiado".equalsIgnoreCase(metodo)) {
+                BigDecimal dividaAtual = cliente.getSaldoDevedor() != null ? cliente.getSaldoDevedor() : BigDecimal.ZERO;
+                cliente.setSaldoDevedor(dividaAtual.add(venda.getValorDevido()));
+                // Como o cliente vai ser salvo via Cascade ou manualmente depois, o saldo fica amarrado
+            }
         }
 
         return vendaRepository.save(venda);

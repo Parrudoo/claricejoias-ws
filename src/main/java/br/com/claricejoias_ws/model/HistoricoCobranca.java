@@ -12,7 +12,7 @@ public class HistoricoCobranca {
     private Long id;
 
     private LocalDateTime dataHora;
-    private String funcionario; // Quem apertou o botão (Ex: Diego)
+    private String funcionario;
 
     @ManyToOne
     @JoinColumn(name = "cliente_id")
