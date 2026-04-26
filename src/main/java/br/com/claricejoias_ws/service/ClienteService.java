@@ -1,10 +1,10 @@
 package br.com.claricejoias_ws.service;
 
 import br.com.claricejoias_ws.dto.ClienteResponseDTO;
+import br.com.claricejoias_ws.dto.CompraDetalheDTO; // <--- Importe o DTO
 import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.Cliente;
 import br.com.claricejoias_ws.model.HistoricoCobranca;
-import br.com.claricejoias_ws.model.Lead;
 import br.com.claricejoias_ws.model.Venda;
 import br.com.claricejoias_ws.repository.ClienteRepository;
 import br.com.claricejoias_ws.repository.HistoricoCobrancaRepository;
@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -66,9 +67,6 @@ public class ClienteService {
                 "Consta em nosso sistema um saldo pendente no valor de *R$ " + valorFormatado + "*.\n\n" +
                 "Gostaria de verificar uma previsão de pagamento para podermos dar baixa no sistema? Qualquer dúvida, estamos à disposição!";
 
-        // 1. Busca o Lead ou lança a sua exceção global automaticamente se não achar
-
-
         // 4. Disparar a mensagem pela Evolution API
         whatsAppService.enviarCobrancaCliente(cliente, mensagem, autenticacaoService.getUsername());
 
@@ -81,6 +79,25 @@ public class ClienteService {
         historicoCobrancaRepository.save(historico);
     }
 
+    // ==========================================================
+    // NOVO MÉTODO: Buscar histórico de compras para os detalhes
+    // ==========================================================
+    public List<CompraDetalheDTO> buscarHistoricoCompras(Long clienteId) {
+        Cliente cliente = clienteRepository.findById(clienteId)
+                .orElseThrow(() -> new RuntimeException("Cliente não encontrado!"));
+
+        if (cliente.getVendas() == null || cliente.getVendas().isEmpty()) {
+            return new ArrayList<>(); // Retorna lista vazia se não tiver compras
+        }
+
+        return cliente.getVendas().stream()
+                .map(this::converterVendaParaCompraDetalheDTO)
+                .collect(Collectors.toList());
+    }
+
+    // ==========================================================
+    // CONVERSORES (Mappers)
+    // ==========================================================
     private ClienteResponseDTO converterParaDTO(Cliente cliente) {
         ClienteResponseDTO dto = new ClienteResponseDTO();
         dto.setId(cliente.getId());
@@ -105,5 +122,22 @@ public class ClienteService {
                 });
 
         return dto;
+    }
+
+    // Conversor para o histórico detalhado
+    private CompraDetalheDTO converterVendaParaCompraDetalheDTO(Venda venda) {
+        /*
+         ATENÇÃO: Verifique os nomes dos "getters" abaixo.
+         Eles precisam bater exatamente com os atributos da sua entidade 'Venda'.
+         Exemplo: se na sua entidade a data for 'getDataCriacao()', altere aqui.
+        */
+        return CompraDetalheDTO.builder()
+                .id(venda.getId())
+                .data(venda.getDataVenda()) // ou venda.getDataCriacao()
+                .total(venda.getTotal())
+                .metodoPagamento(venda.getMetodoPagamento()) // "pix", "fiado", "cartao", etc.
+                .valorEntrada(venda.getValorEntrada() != null ? venda.getValorEntrada() : 0.0)
+                .parcelas(venda.getParcelas() != null ? venda.getParcelas() : 1)
+                .build();
     }
 }

@@ -33,4 +33,7 @@ public class Venda {
     @ManyToOne(cascade = CascadeType.MERGE)
     @JoinColumn(name = "cliente_id")
     private Cliente cliente;
+
+    @OneToMany(mappedBy = "venda", cascade = CascadeType.ALL)
+    private List<Parcela> parcelasDetalhadas;
 }

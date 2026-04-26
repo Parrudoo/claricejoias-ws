@@ -15,6 +15,9 @@ public interface ClienteRepository extends JpaRepository<Cliente, Long> {
     Optional<Cliente> findByTelefone(String telefone);
 
     // Busca apenas os clientes que têm alguma venda com valor devido maior que zero
-    @Query("SELECT DISTINCT c FROM Cliente c JOIN Venda v ON v.cliente.id = c.id WHERE v.valorDevido > 0")
+    @Query("SELECT DISTINCT c FROM Cliente c " +
+            "JOIN c.vendas v " +
+            "JOIN v.parcelasDetalhadas p " +
+            "WHERE p.status = 'PENDENTE' AND p.dataVencimento < CURRENT_DATE")
     List<Cliente> findClientesInadimplentes();
 }

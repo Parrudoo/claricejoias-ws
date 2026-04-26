@@ -20,14 +20,18 @@ public class VendaController {
 
     private final VendaService vendaService;
 
-    @Operation(summary = "Registrar nova venda", description = "Recebe os dados do carrinho do PDV e finaliza a transação.")
+    @Operation(summary = "Registrar nova venda")
     @PostMapping
-    public ResponseEntity<Venda> registrarVenda(@RequestBody VendaRequestDTO dto) {
+    public ResponseEntity<?> registrarVenda(@RequestBody VendaRequestDTO dto) {
         try {
             Venda vendaSalva = vendaService.registrarVenda(dto);
             return ResponseEntity.status(HttpStatus.CREATED).body(vendaSalva);
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            // Isso vai imprimir o erro exato no terminal da sua IDE (Eclipse/IntelliJ/VSCode)
+            e.printStackTrace();
+
+            // Isso vai mandar a mensagem de erro lá pro alert do React
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         }
     }
 
