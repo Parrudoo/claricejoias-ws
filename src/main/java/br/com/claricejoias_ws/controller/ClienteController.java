@@ -1,7 +1,6 @@
 package br.com.claricejoias_ws.controller;
 
-import br.com.claricejoias_ws.dto.ClienteResponseDTO;
-import br.com.claricejoias_ws.dto.CompraDetalheDTO; // <--- Não esqueça de importar o novo DTO
+import br.com.claricejoias_ws.dto.*;
 import br.com.claricejoias_ws.service.ClienteService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -52,11 +51,31 @@ public class ClienteController {
     // ==========================================================
     @Operation(summary = "Listar histórico detalhado de compras de um cliente específico")
     @GetMapping("/{id}/compras")
-    public ResponseEntity<List<CompraDetalheDTO>> listarComprasDoCliente(@PathVariable Long id) {
+    public ResponseEntity<List<MovimentacaoDTO>> listarComprasDoCliente(@PathVariable Long id) {
         try {
             // Esse método precisará ser criado no seu ClienteService ou VendaService
-            List<CompraDetalheDTO> compras = clienteService.buscarHistoricoCompras(id);
+            List<MovimentacaoDTO> compras = clienteService.buscarHistoricoCompras(id);
             return ResponseEntity.ok(compras);
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+
+    // ==========================================================
+    // NOVO ENDPOINT: Lançar pagamento (Dar baixa)
+    // ==========================================================
+    @Operation(summary = "Registrar baixa de pagamento e atualizar saldo do cliente")
+    @PostMapping("/{id}/pagamentos")
+    public ResponseEntity<Void> registrarPagamento(
+            @PathVariable Long id,
+            @RequestBody BaixaPagamentoDTO baixaPagamentoDTO) {
+        try {
+            // O serviço processa a baixa no saldo e gera o histórico
+            clienteService.registrarPagamento(id, baixaPagamentoDTO);
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
         }

@@ -1,20 +1,26 @@
 package br.com.claricejoias_ws.service;
 
+import br.com.claricejoias_ws.dto.BaixaPagamentoDTO;
 import br.com.claricejoias_ws.dto.ClienteResponseDTO;
-import br.com.claricejoias_ws.dto.CompraDetalheDTO; // <--- Importe o DTO
+import br.com.claricejoias_ws.dto.CompraDetalheDTO;
+import br.com.claricejoias_ws.dto.MovimentacaoDTO;
 import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.Cliente;
 import br.com.claricejoias_ws.model.HistoricoCobranca;
+import br.com.claricejoias_ws.model.Pagamento;
 import br.com.claricejoias_ws.model.Venda;
 import br.com.claricejoias_ws.repository.ClienteRepository;
 import br.com.claricejoias_ws.repository.HistoricoCobrancaRepository;
-import br.com.claricejoias_ws.repository.LeadRepository;
+import br.com.claricejoias_ws.repository.PagamentoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -25,16 +31,20 @@ public class ClienteService {
     private final ClienteRepository clienteRepository;
     private final HistoricoCobrancaRepository historicoCobrancaRepository;
     private final AutenticacaoService autenticacaoService;
-
-    // Injetar o serviço do WhatsApp
+    private final PagamentoRepository pagamentoRepository;
     private final WhatsAppService whatsAppService;
 
+    // Adicionado Transactional readOnly para otimizar a leitura
+    @Transactional(readOnly = true)
     public List<ClienteResponseDTO> listarTodos() {
-        return clienteRepository.findAll().stream()
+        List<Cliente> clientes = clienteRepository.findAll();
+        List<ClienteResponseDTO> list = clienteRepository.findAll().stream()
                 .map(this::converterParaDTO)
                 .collect(Collectors.toList());
+        return list;
     }
 
+    @Transactional(readOnly = true)
     public List<ClienteResponseDTO> listarPendentes() {
         return clienteRepository.findClientesInadimplentes().stream()
                 .map(this::converterParaDTO)
@@ -46,14 +56,8 @@ public class ClienteService {
         Cliente cliente = clienteRepository.findById(clienteId)
                 .orElseThrow(() -> new RuntimeException("Cliente não encontrado!"));
 
-        // 1. Calcular a dívida total do cliente para colocar na mensagem
-        double totalDevido = 0.0;
-        if (cliente.getVendas() != null) {
-            totalDevido = cliente.getVendas().stream()
-                    .filter(v -> v.getValorDevido() != null)
-                    .mapToDouble(Venda::getValorDevido)
-                    .sum();
-        }
+        // 1. Puxar a dívida diretamente do novo campo de saldo do cliente
+        double totalDevido = cliente.getSaldoDevedor() != null ? cliente.getSaldoDevedor().doubleValue() : 0.0;
 
         // 2. Se a dívida for zero, não faz sentido cobrar
         if (totalDevido <= 0) {
@@ -79,20 +83,44 @@ public class ClienteService {
         historicoCobrancaRepository.save(historico);
     }
 
-    // ==========================================================
-    // NOVO MÉTODO: Buscar histórico de compras para os detalhes
-    // ==========================================================
-    public List<CompraDetalheDTO> buscarHistoricoCompras(Long clienteId) {
+    // Adicionado Transactional pois precisamos carregar a lista de vendas (Lazy)
+    @Transactional(readOnly = true)
+    public List<MovimentacaoDTO> buscarHistoricoCompras(Long clienteId) {
         Cliente cliente = clienteRepository.findById(clienteId)
                 .orElseThrow(() -> new RuntimeException("Cliente não encontrado!"));
 
-        if (cliente.getVendas() == null || cliente.getVendas().isEmpty()) {
-            return new ArrayList<>(); // Retorna lista vazia se não tiver compras
+        List<MovimentacaoDTO> extrato = new ArrayList<>();
+
+        // Inclui as Compras (🛒) mantendo seus detalhes originais
+        if (cliente.getVendas() != null) {
+            cliente.getVendas().forEach(v -> extrato.add(
+                    MovimentacaoDTO.builder()
+                            .tipo("COMPRA")
+                            .data(v.getDataVenda())
+                            .valor(v.getTotal())
+                            .metodo(v.getMetodoPagamento())
+                            .valorEntrada(v.getValorEntrada())
+                            .parcelas(v.getParcelas())
+                            .build()
+            ));
         }
 
-        return cliente.getVendas().stream()
-                .map(this::converterVendaParaCompraDetalheDTO)
-                .collect(Collectors.toList());
+        // Inclui os Pagamentos (💰) que o cliente já fez
+        if (cliente.getPagamentos() != null) {
+            cliente.getPagamentos().forEach(p -> extrato.add(
+                    MovimentacaoDTO.builder()
+                            .tipo("PAGAMENTO")
+                            .data(p.getDataPagamento().atStartOfDay())
+                            .valor(p.getValorPago().doubleValue())
+                            .metodo(p.getFormaPagamento())
+                            .observacao(p.getObservacao())
+                            .build()
+            ));
+        }
+
+        // Ordena do mais recente para o mais antigo
+        extrato.sort(Comparator.comparing(MovimentacaoDTO::getData).reversed());
+        return extrato;
     }
 
     // ==========================================================
@@ -104,15 +132,31 @@ public class ClienteService {
         dto.setNome(cliente.getNome());
         dto.setTelefone(cliente.getTelefone());
 
-        double totalDevido = 0.0;
+        // 1. Soma o valor devido de todas as vendas
+        double totalVendasFiado = 0.0;
         if (cliente.getVendas() != null) {
-            totalDevido = cliente.getVendas().stream()
+            totalVendasFiado = cliente.getVendas().stream()
                     .filter(v -> v.getValorDevido() != null)
                     .mapToDouble(Venda::getValorDevido)
                     .sum();
         }
-        dto.setValorDevido(totalDevido);
 
+        // 2. Soma todos os pagamentos (baixas) que o cliente já fez
+        double totalPagamentosRealizados = 0.0;
+        if (cliente.getPagamentos() != null) {
+            totalPagamentosRealizados = cliente.getPagamentos().stream()
+                    .filter(p -> p.getValorPago() != null)
+                    .mapToDouble(p -> p.getValorPago().doubleValue())
+                    .sum();
+        }
+
+        // 3. O saldo real é a diferença
+        double saldoReal = totalVendasFiado - totalPagamentosRealizados;
+
+        // Garante que o saldo não fique negativo na tela por arredondamento
+        dto.setValorDevido(Math.max(0, saldoReal));
+
+        // Histórico de cobrança...
         historicoCobrancaRepository.findFirstByClienteIdOrderByDataHoraDesc(cliente.getId())
                 .ifPresent(historico -> {
                     ClienteResponseDTO.UltimaCobrancaDTO cobrancaDTO = new ClienteResponseDTO.UltimaCobrancaDTO();
@@ -124,20 +168,89 @@ public class ClienteService {
         return dto;
     }
 
-    // Conversor para o histórico detalhado
     private CompraDetalheDTO converterVendaParaCompraDetalheDTO(Venda venda) {
-        /*
-         ATENÇÃO: Verifique os nomes dos "getters" abaixo.
-         Eles precisam bater exatamente com os atributos da sua entidade 'Venda'.
-         Exemplo: se na sua entidade a data for 'getDataCriacao()', altere aqui.
-        */
         return CompraDetalheDTO.builder()
                 .id(venda.getId())
-                .data(venda.getDataVenda()) // ou venda.getDataCriacao()
+                .data(venda.getDataVenda())
                 .total(venda.getTotal())
-                .metodoPagamento(venda.getMetodoPagamento()) // "pix", "fiado", "cartao", etc.
+                .metodoPagamento(venda.getMetodoPagamento())
                 .valorEntrada(venda.getValorEntrada() != null ? venda.getValorEntrada() : 0.0)
                 .parcelas(venda.getParcelas() != null ? venda.getParcelas() : 1)
                 .build();
     }
+
+    @Transactional
+    public void registrarPagamento(Long clienteId, BaixaPagamentoDTO dto) {
+        Cliente cliente = clienteRepository.findById(clienteId)
+                .orElseThrow(() -> new RuntimeException("Cliente não encontrado com ID: " + clienteId));
+
+        // 1. Calcular o saldo devedor real somando as vendas fiadas
+        BigDecimal saldoRealCalculado = BigDecimal.ZERO;
+        if (cliente.getVendas() != null) {
+            double somaVendas = cliente.getVendas().stream()
+                    .filter(v -> v.getValorDevido() != null)
+                    .mapToDouble(Venda::getValorDevido)
+                    .sum();
+            saldoRealCalculado = BigDecimal.valueOf(somaVendas);
+        }
+
+        // 2. Validações de negócio
+        if (dto.valorPago() == null || dto.valorPago().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RegraNegocioException("O valor do pagamento deve ser maior que zero.");
+        }
+
+        // Comparar com o saldo que acabamos de calcular das vendas
+        if (dto.valorPago().compareTo(saldoRealCalculado) > 0) {
+            throw new RegraNegocioException(
+                    "O valor do pagamento não pode ser maior que o saldo devedor atual (R$ " + saldoRealCalculado + ")."
+            );
+        }
+
+        // 3. Atualizar o saldo_devedor do cliente (o campo resumo no banco)
+        // Mesmo que você use o cálculo das vendas no Dashboard, é bom manter esse campo
+        // atualizado para performance futura.
+        BigDecimal novoSaldo = saldoRealCalculado.subtract(dto.valorPago());
+        cliente.setSaldoDevedor(novoSaldo);
+        clienteRepository.save(cliente);
+
+        // 4. Registrar o histórico financeiro
+        Pagamento historico = new Pagamento();
+        historico.setCliente(cliente);
+        historico.setValorPago(dto.valorPago());
+        historico.setFormaPagamento(dto.formaPagamento());
+        historico.setObservacao(dto.observacao());
+        historico.setDataPagamento(dto.dataPagamento() != null ? dto.dataPagamento() : LocalDate.now());
+
+        pagamentoRepository.save(historico);
+
+        // DICA: Se você quiser abater o valor diretamente das vendas (diminuindo o valorDevido delas),
+        // seria necessário uma lógica extra para percorrer as vendas e ir subtraindo até zerar o valor pago.
+    }
+
+//    @Transactional(readOnly = true)
+//    public List<MovimentacaoDTO> buscarExtratoCompleto(Long clienteId) {
+//        Cliente cliente = clienteRepository.findById(clienteId)
+//                .orElseThrow(() -> new RuntimeException("Cliente não encontrado!"));
+//
+//        List<MovimentacaoDTO> historico = new ArrayList<>();
+//
+//        // Adiciona Compras
+//        cliente.getVendas().forEach(v -> {
+//            historico.add(new MovimentacaoDTO(
+//                    "COMPRA", v.getDataVenda(), v.getTotal(), v.getMetodoPagamento(), null
+//            ));
+//        });
+//
+//        // Adiciona Pagamentos (Baixas)
+//        cliente.getPagamentos().forEach(p -> {
+//            historico.add(new MovimentacaoDTO(
+//                    "PAGAMENTO", p.getDataPagamento().atStartOfDay(), p.getValorPago().doubleValue(), p.getFormaPagamento(), null
+//            ));
+//        });
+//
+//        // Ordena por data (mais recente primeiro)
+//        return historico.stream()
+//                .sorted(Comparator.comparing(MovimentacaoDTO::data).reversed())
+//                .collect(Collectors.toList());
+//    }
 }
