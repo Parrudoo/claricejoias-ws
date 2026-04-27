@@ -27,6 +27,11 @@ public class Cliente {
     @Column(unique = true) // Evita duplicar o mesmo WhatsApp
     private String telefone;
 
+    @Column(unique = true)
+    private String whatsapp;
+
+    private String email;
+
     // NOVO: Campo necessário para a lógica de "dar baixa" funcionar
     @Column(name = "saldo_devedor", precision = 10, scale = 2)
     private BigDecimal saldoDevedor = BigDecimal.ZERO;

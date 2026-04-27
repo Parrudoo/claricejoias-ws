@@ -20,6 +20,10 @@ public class Lead {
     private String whatsapp;
     private String email;
 
+    //  O elo de ligação com a navegação anônima
+    @Column(name = "visitor_id", unique = true)
+    private String visitorId;
+
     // Novos campos para controle do painel
     private Boolean ativo = true;
     private Boolean comprou = false;

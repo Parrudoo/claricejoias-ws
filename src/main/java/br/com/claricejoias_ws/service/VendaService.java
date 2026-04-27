@@ -1,5 +1,6 @@
 package br.com.claricejoias_ws.service;
 
+import br.com.claricejoias_ws.dto.CheckoutDTO;
 import br.com.claricejoias_ws.dto.VendaRequestDTO;
 import br.com.claricejoias_ws.model.*;
 import br.com.claricejoias_ws.repository.ClienteRepository;
@@ -26,6 +27,7 @@ public class VendaService {
     private final VendaRepository vendaRepository;
     private final ProdutoRepository produtoRepository;
     private final ClienteRepository clienteRepository;
+    private final CarrinhoService carrinhoService;
 
     @Transactional
     public Venda registrarVenda(VendaRequestDTO dto) {
@@ -139,6 +141,67 @@ public class VendaService {
         }
 
         return vendaRepository.save(venda);
+    }
+
+    @Transactional
+    public Venda realizarCheckout(String visitorId, String usuarioId, CheckoutDTO dto) {
+
+        // 1. Busca o carrinho atual no banco (AGORA PASSANDO OS DOIS IDs)
+        Carrinho carrinho = carrinhoService.obterOuCriarCarrinho(visitorId, usuarioId);
+
+        if (carrinho.getItens().isEmpty()) {
+            throw new RuntimeException("Não é possível finalizar um pedido com a maleta vazia.");
+        }
+
+        // 2. Busca o Cliente pelo WhatsApp (ou cria um novo se não existir)
+        Cliente cliente = clienteRepository.findByWhatsapp(dto.getWhatsapp())
+                .orElseGet(() -> {
+                    Cliente novoCliente = new Cliente();
+                    novoCliente.setNome(dto.getNome());
+                    novoCliente.setWhatsapp(dto.getWhatsapp());
+                    novoCliente.setEmail(dto.getEmail());
+
+                    // (Opcional) Se você tiver um campo keycloakId na entidade Cliente,
+                    // você pode salvá-lo aqui: novoCliente.setKeycloakId(usuarioId);
+
+                    return clienteRepository.save(novoCliente);
+                });
+
+        // 3. Monta a entidade Venda
+        Venda venda = new Venda();
+        venda.setCliente(cliente);
+        venda.setDataVenda(LocalDateTime.now());
+        venda.setTotal(carrinho.getValorTotal()); // O BigDecimal que criamos no Carrinho
+
+        // Configurações financeiras vindas do DTO
+        venda.setMetodoPagamento(dto.getMetodoPagamento());
+        venda.setParcelas(dto.getParcelas());
+        venda.setValorRecebido(dto.getValorRecebido());
+        venda.setValorEntrada(dto.getValorEntrada());
+
+        // 4. Transfere os itens do Carrinho para ItemVenda
+        for (ItemCarrinho itemCart : carrinho.getItens()) {
+            ItemVenda itemVenda = new ItemVenda();
+            itemVenda.setProduto(itemCart.getProduto());
+            itemVenda.setQuantidade(itemCart.getQuantidade());
+
+            // É importante travar o preço no ItemVenda para o preço atual da joia,
+            // assim, se o preço mudar amanhã, o histórico de vendas não é afetado!
+            itemVenda.setPrecoUnitario(itemCart.getProduto().getPreco());
+
+            itemVenda.setVenda(venda); // Relacionamento bidirecional
+
+            venda.getItens().add(itemVenda);
+        }
+
+        // 5. Salva a Venda (graças ao CascadeType.ALL e ao @PrePersist,
+        // os itens serão salvos e o valorDevido será calculado sozinho)
+        Venda vendaSalva = vendaRepository.save(venda);
+
+        // 6. MÁGICA: Limpa o carrinho! (AGORA PASSANDO OS DOIS IDs)
+        carrinhoService.limparCarrinho(visitorId, usuarioId);
+
+        return vendaSalva;
     }
 
 

@@ -13,7 +13,7 @@ import java.io.InputStream;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/arquivos")
+@RequestMapping("/api/arquivos")
 @RequiredArgsConstructor
 public class ArquivoController {
 

@@ -20,4 +20,6 @@ public interface ClienteRepository extends JpaRepository<Cliente, Long> {
             "JOIN v.parcelasDetalhadas p " +
             "WHERE p.status = 'PENDENTE' AND p.dataVencimento < CURRENT_DATE")
     List<Cliente> findClientesInadimplentes();
+
+    Optional<Cliente> findByWhatsapp(String whatsapp);
 }

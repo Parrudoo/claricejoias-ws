@@ -44,7 +44,7 @@ public class VisitanteService {
     }
 
     @Transactional
-    public void converterEmLead(LeadDTO dto, String uuid) {
+    public void converterEmLead(LeadDTO dto, String visitorId) {
         // Limpa tudo que não for número
         String whatsappLimpo = dto.getWhatsapp().replaceAll("[^0-9]", "");
 
@@ -54,6 +54,7 @@ public class VisitanteService {
         }
         // 1. Salva o Lead oficial para o painel administrativo
         Lead lead = new Lead();
+        lead.setVisitorId(visitorId);
         lead.setNome(dto.getNome());
         lead.setWhatsapp(whatsappLimpo);
         lead.setAtivo(true);
@@ -61,7 +62,7 @@ public class VisitanteService {
         leadRepository.save(lead);
 
         // 2. Vincula os dados ao Visitante (Crachá) para controle do site
-        String uuidFinal = (uuid != null) ? uuid : UUID.randomUUID().toString();
+        String uuidFinal = (visitorId != null) ? visitorId : UUID.randomUUID().toString();
 
         Visitante visitante = visitanteRepository.findByVisitorUuid(uuidFinal)
                 .orElseGet(() -> {

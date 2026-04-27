@@ -2,56 +2,50 @@ package br.com.claricejoias_ws.controller;
 
 import br.com.claricejoias_ws.dto.LeadDTO;
 import br.com.claricejoias_ws.service.VisitanteService;
-import jakarta.servlet.http.Cookie;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Arrays;
 
 @RestController
 @RequestMapping("/api/visitantes")
 @RequiredArgsConstructor
+@Tag(name = "Visitantes e Leads", description = "Endpoints para controle de visitantes anônimos e conversão em leads (ex: Captação pelo Guia de Medidas)")
 public class VisitanteController {
 
     private final VisitanteService visitanteService;
 
     @GetMapping("/status-guia")
-    public boolean verificarStatusGuia(HttpServletRequest request, HttpServletResponse response) {
-        String uuid = recuperarUuid(request);
+    @Operation(
+            summary = "Verificar status do Guia de Medidas",
+            description = "Verifica se o visitante atual já baixou o Guia de Medidas. Retorna 'true' se o botão de download deve ser exibido."
+    )
+    public boolean verificarStatusGuia(
+            @Parameter(description = "ID único do visitante gerado pelo frontend (UUID)", example = "550e8400-e29b-41d4-a716-446655440000")
+            @RequestHeader(value = "X-Visitor-ID", required = false) String visitorId) {
 
-        // Se for nulo, o service cria um novo e o controller gera o cookie
-        if (uuid == null) {
-            String novoUuid = visitanteService.inicializarOuRecuperarVisitante(null);
-            adicionarCookie(response, novoUuid);
+        // Se o frontend por algum motivo não mandar o ID, assumimos que é um visitante novo
+        // e retornamos 'true' para que ele veja o botão de baixar o guia.
+        if (visitorId == null) {
             return true;
         }
 
-        return visitanteService.deveMostrarBotaoGuia(uuid);
+        // Se mandou o ID, o service verifica se ele já baixou
+        return visitanteService.deveMostrarBotaoGuia(visitorId);
     }
 
     @PostMapping("/registrar-lead")
-    public void registrarLead(@RequestBody LeadDTO dto, HttpServletRequest request) {
-        String uuid = recuperarUuid(request);
-        visitanteService.converterEmLead(dto, uuid);
-    }
+    @Operation(
+            summary = "Registrar novo Lead",
+            description = "Salva os dados de contato do visitante (nome, whatsapp, etc) atrelando-os ao seu ID de navegação."
+    )
+    public void registrarLead(
+            @Parameter(description = "ID único do visitante gerado pelo frontend (UUID)")
+            @RequestHeader(value = "X-Visitor-ID", required = false) String visitorId,
+            @RequestBody LeadDTO dto) {
 
-    // Métodos utilitários privados para não poluir a lógica principal
-    private String recuperarUuid(HttpServletRequest request) {
-        if (request.getCookies() == null) return null;
-        return Arrays.stream(request.getCookies())
-                .filter(c -> "visitor_id".equals(c.getName()))
-                .map(Cookie::getValue)
-                .findFirst()
-                .orElse(null);
-    }
-
-    private void adicionarCookie(HttpServletResponse response, String uuid) {
-        Cookie cookie = new Cookie("visitor_id", uuid);
-        cookie.setHttpOnly(true);
-        cookie.setMaxAge(60 * 60 * 24 * 365);
-        cookie.setPath("/");
-        response.addCookie(cookie);
+        // O service agora pega os dados digitados e atrela ao visitante usando o UUID do cabeçalho
+        visitanteService.converterEmLead(dto, visitorId);
     }
 }
