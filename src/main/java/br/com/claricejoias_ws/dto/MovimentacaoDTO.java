@@ -22,6 +22,7 @@ public class MovimentacaoDTO {
     private BigDecimal valorDevido;
     private List<ParcelaDTO> parcelas;
 
+    private Integer qtdParcelas;
     // Campo do seu Pagamento
     private String observacao;
     private List<PagamentoDTO> historicoPagamentos;

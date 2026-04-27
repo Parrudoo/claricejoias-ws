@@ -98,28 +98,25 @@ public class ClienteService {
 
                 // 1. Mapeia os pagamentos vinculados EXCLUSIVAMENTE a esta venda
                 List<PagamentoDTO> pagamentosDaVenda = new ArrayList<>();
-
                 if (venda.getPagamentos() != null) {
                     venda.getPagamentos().forEach(p -> pagamentosDaVenda.add(
                             PagamentoDTO.builder()
                                     .data(p.getDataPagamento().atStartOfDay())
-                                    // 👇 Removido o .doubleValue() assumindo que PagamentoDTO já usa BigDecimal
                                     .valor(p.getValorPago())
                                     .metodo(p.getFormaPagamento())
                                     .observacao(p.getObservacao())
                                     .build()
                     ));
                 }
-
                 // Ordenar os pagamentos dentro da compra do mais recente para o mais antigo
                 pagamentosDaVenda.sort(Comparator.comparing(PagamentoDTO::getData).reversed());
 
-                // 2. 👇 NOVA PARTE: Mapeia as parcelas detalhadas da Venda
-                // 👇 Mudamos de MovimentacaoDTO.ParcelaDTO para apenas ParcelaDTO
+
+                // 2. Mapeia as parcelas detalhadas da Venda (Apenas para FIADO)
                 List<ParcelaDTO> listaParcelasDTO = new ArrayList<>();
-                if (venda.getParcelasDetalhadas() != null) {
+                if (venda.getParcelasDetalhadas() != null && !venda.getParcelasDetalhadas().isEmpty()) {
                     listaParcelasDTO = venda.getParcelasDetalhadas().stream().map(p ->
-                            ParcelaDTO.builder() // 👈 Chama o builder direto do novo arquivo
+                            ParcelaDTO.builder()
                                     .id(p.getId())
                                     .numeroParcela(p.getNumeroParcela())
                                     .valor(p.getValor())
@@ -138,8 +135,9 @@ public class ClienteService {
                                 .valor(venda.getTotal())
                                 .metodo(venda.getMetodoPagamento())
                                 .valorEntrada(venda.getValorEntrada())
-                                .valorDevido(venda.getValorDevido()) // Adicionado para o React saber se quitou
-                                .parcelas(listaParcelasDTO) // 🔗 Agora envia a Lista, não o Integer!
+                                .valorDevido(venda.getValorDevido())
+                                .qtdParcelas(venda.getParcelas())
+                                .parcelas(listaParcelasDTO)
                                 .historicoPagamentos(pagamentosDaVenda)
                                 .build()
                 );
