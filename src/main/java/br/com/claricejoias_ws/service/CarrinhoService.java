@@ -1,11 +1,16 @@
 package br.com.claricejoias_ws.service;
 
+import br.com.claricejoias_ws.dto.CarrinhoDTO;
+import br.com.claricejoias_ws.dto.ItemCarrinhoDTO;
+import br.com.claricejoias_ws.dto.ProdutoDTO;
 import br.com.claricejoias_ws.model.Carrinho;
 import br.com.claricejoias_ws.model.ItemCarrinho;
 import br.com.claricejoias_ws.model.Produto;
 import br.com.claricejoias_ws.repository.CarrinhoRepository;
 import br.com.claricejoias_ws.repository.ProdutoRepository;
+import lombok.RequiredArgsConstructor;
 import org.hibernate.StaleObjectStateException;
+import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -14,16 +19,18 @@ import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 
 @Service
+@RequiredArgsConstructor
 public class CarrinhoService {
 
-    @Autowired
-    private CarrinhoRepository carrinhoRepository;
 
-    @Autowired
-    private ProdutoRepository produtoRepository;
+    private final CarrinhoRepository carrinhoRepository;
+    private final ProdutoRepository produtoRepository;
+    private final ModelMapper modelMapper;
 
     /**
      * Ponto de entrada limpo.
@@ -45,6 +52,54 @@ public class CarrinhoService {
             return processarCarrinhoDeUsuario(visitorId, usuarioId);
         }
         return processarCarrinhoAnonimo(visitorId);
+    }
+
+
+    // ========================================================================
+    // MÉTODO DE CONSULTA PURA (Não cria lixo no banco)
+    // ========================================================================
+
+    @Transactional(readOnly = true)
+    public CarrinhoDTO consultarCarrinhoAtual(String visitorId, String usuarioId) {
+        Optional<Carrinho> carrinhoOpt = Optional.empty();
+
+        if (isUsuarioLogado(usuarioId)) {
+            carrinhoOpt = carrinhoRepository.findFirstByUsuarioId(usuarioId);
+        } else if (visitorId != null) {
+            carrinhoOpt = carrinhoRepository.findFirstByVisitorId(visitorId);
+        }
+
+        // Se achou, converte para DTO. Se não, retorna null (que vira 204 no Controller)
+        return carrinhoOpt.map(this::convertToDTO).orElse(null);
+    }
+
+    // Método auxiliar de conversão (Pode usar ModelMapper aqui se preferir)
+    private CarrinhoDTO convertToDTO(Carrinho carrinho) {
+        CarrinhoDTO dto = new CarrinhoDTO();
+        dto.setId(carrinho.getId());
+        dto.setVisitorId(carrinho.getVisitorId());
+        dto.setUsuarioId(carrinho.getUsuarioId());
+
+        List<ItemCarrinhoDTO> itensDTO = carrinho.getItens().stream().map(item -> {
+            ItemCarrinhoDTO itemDto = new ItemCarrinhoDTO();
+            itemDto.setProduto(modelMapper.map(item.getProduto(), ProdutoDTO.class) );
+            itemDto.setQuantidade(item.getQuantidade());
+
+
+
+            return itemDto;
+        }).toList();
+
+        dto.setItens(itensDTO);
+
+        // Calcula o total do carrinho no servidor
+        BigDecimal total = itensDTO.stream()
+                .map(i -> i.getProduto().getPreco().multiply(BigDecimal.valueOf(i.getQuantidade())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        dto.setValorTotal(total);
+
+        return dto;
     }
 
     // ========================================================================

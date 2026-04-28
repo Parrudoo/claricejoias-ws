@@ -21,16 +21,34 @@ public class CarrinhoController {
         return modelMapper.map(carrinho, CarrinhoDTO.class);
     }
 
+//    @GetMapping
+//    public ResponseEntity<CarrinhoDTO> obterCarrinho(
+//            @RequestHeader(value = "X-Visitor-ID", required = false) String visitorId,
+//            @AuthenticationPrincipal Jwt jwt) { // Puxa o token se o utilizador enviou
+//
+//        String usuarioId = (jwt != null) ? jwt.getSubject() : null; // Pega o ID do Keycloak
+//
+//        Carrinho carrinho = carrinhoService.obterOuCriarCarrinho(visitorId, usuarioId);
+//        return ResponseEntity.ok(converterParaDTO(carrinho));
+//    }
+
+
     @GetMapping
-    public ResponseEntity<CarrinhoDTO> obterCarrinho(
+    public ResponseEntity<CarrinhoDTO> buscarMeuCarrinho(
             @RequestHeader(value = "X-Visitor-ID", required = false) String visitorId,
-            @AuthenticationPrincipal Jwt jwt) { // Puxa o token se o utilizador enviou
+            @RequestHeader(value = "X-Usuario-ID", required = false) String usuarioId) {
 
-        String usuarioId = (jwt != null) ? jwt.getSubject() : null; // Pega o ID do Keycloak
+        // Usa a consulta inofensiva!
+        CarrinhoDTO carrinho = carrinhoService.consultarCarrinhoAtual(visitorId, usuarioId);
 
-        Carrinho carrinho = carrinhoService.obterOuCriarCarrinho(visitorId, usuarioId);
-        return ResponseEntity.ok(converterParaDTO(carrinho));
+        if (carrinho == null) {
+            // Se não tem carrinho, devolve 204 No Content (O React entende que a maleta tá vazia)
+            return ResponseEntity.noContent().build();
+        }
+
+        return ResponseEntity.ok(carrinho);
     }
+
 
     @PostMapping("/adicionar/{produtoId}")
     public ResponseEntity<CarrinhoDTO> adicionarItem(

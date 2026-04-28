@@ -9,6 +9,7 @@ public class CarrinhoDTO {
     private Long id;
     private String visitorId;
     private BigDecimal valorTotal;
+    private String usuarioId;
 
     // Lista de itens já tipada com o DTO para quebrar o loop do Hibernate
     private List<ItemCarrinhoDTO> itens;
