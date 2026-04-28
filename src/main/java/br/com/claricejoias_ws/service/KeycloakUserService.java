@@ -2,8 +2,9 @@ package br.com.claricejoias_ws.service;
 
 import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.Cliente;
+import br.com.claricejoias_ws.model.Lead;
 import br.com.claricejoias_ws.repository.ClienteRepository;
-import br.com.claricejoias_ws.repository.VisitanteRepository; // Adicione esse repositório
+import br.com.claricejoias_ws.repository.LeadRepository;
 import jakarta.ws.rs.core.Response;
 import lombok.RequiredArgsConstructor;
 import org.keycloak.admin.client.Keycloak;
@@ -21,7 +22,7 @@ public class KeycloakUserService {
 
     private final Keycloak keycloak;
     private final ClienteRepository clienteRepository;
-    private final VisitanteRepository visitanteRepository; // Injetado para buscar os dados de Lead
+    private final LeadRepository leadRepository;
 
     private final String REALM_NAME = "claricejoias";
 
@@ -29,8 +30,9 @@ public class KeycloakUserService {
      * Fluxo para Clientes: Cadastro direto com senha definida no modal da loja.
      * Agora recebe o visitorId para aproveitar os dados do Lead!
      */
-    @Transactional // Adicionado para garantir que salve no banco de dados com segurança
-    public void criarUsuarioCliente(String email, String senha, String nomeCompleto, String visitorId) {
+    @Transactional // Garante que se o banco falhar, o processo reverta com segurança
+    public void criarUsuarioCliente(String email, String senha, String nomeCompleto, String whatsapp, String visitorId) {
+
         UserRepresentation user = criarRepresentacaoBasica(email, nomeCompleto);
 
         // 1. Cria no Keycloak
@@ -39,30 +41,67 @@ public class KeycloakUserService {
         // 2. Processa a resposta e pega o ID gerado pelo Keycloak
         String userId = processarResposta(response, senha, "cliente");
 
-        // 3. CRIA O CLIENTE NO BANCO DE DADOS LOCAL
+        // 3. Prepara o Cliente no banco de dados local
         Cliente novoCliente = new Cliente();
-        novoCliente.setUsuarioId(userId); // Esse é o vínculo com o Keycloak!
+        novoCliente.setUsuarioId(userId); // Esse é o vínculo oficial com o Keycloak!
         novoCliente.setEmail(email);
+        novoCliente.setWhatsapp(whatsapp);
+        novoCliente.setTelefone(whatsapp);
         novoCliente.setNome(nomeCompleto);
 
-        // 4. Aproveita os dados de Lead (se o visitante baixou o e-book)
-        if (visitorId != null && !visitorId.isEmpty()) {
-            visitanteRepository.findByVisitorUuid(visitorId).ifPresent(visitante -> {
-                // Se ele tinha deixado o WhatsApp lá atrás, já preenchemos no perfil dele
-                if (visitante.getWhatsapp() != null) {
-                    novoCliente.setTelefone(visitante.getWhatsapp());
-                }
+        // =========================================================
+        // 4. A MÁGICA DO FUNIL DE VENDAS E MARKETING (LEAD)
+        // =========================================================
+        Lead leadDoMarketing = null;
 
-                // Marca o visitante vinculando-o ao novo usuário oficial
-                visitante.setUsuarioId(userId);
-                visitanteRepository.save(visitante);
-            });
+        if (visitorId != null && !visitorId.isEmpty()) {
+            // Tenta buscar o Lead pelo rastro do navegador
+            leadDoMarketing = leadRepository.findByVisitorId(visitorId).orElse(null);
+
+            // 🚨 A TRAVA DO COMPUTADOR PÚBLICO 🚨
+            // Se o lead encontrado já possui um usuarioId, significa que o primeiro usuário
+            // já usou esse PC e criou a conta dele. Como um SEGUNDO usuário está criando
+            // uma conta nova agora, nós anulamos a busca para forçar a criação de um Lead virgem.
+            if (leadDoMarketing != null && leadDoMarketing.getUsuarioId() != null) {
+                leadDoMarketing = null;
+            }
         }
 
-        // 5. Salva o cliente oficial no PostgreSQL
+        if (leadDoMarketing != null) {
+            // CENÁRIO A: O cara já era um Lead ANÔNIMO (ninguém registrou conta com esse PC ainda)
+            // Vinculamos ele ao novo usuário oficial
+            leadDoMarketing.setUsuarioId(userId);
+            leadDoMarketing.setNome(nomeCompleto); // Atualiza com o nome oficial do cadastro
+            leadDoMarketing.setEmail(email);       // Atualiza o email caso ele tenha mudado
+            leadDoMarketing.setWhatsapp(whatsapp);
+
+            // Se ele deixou o WhatsApp lá atrás na captura, a gente garante no perfil do Cliente!
+            if (leadDoMarketing.getWhatsapp() != null) {
+                novoCliente.setTelefone(leadDoMarketing.getWhatsapp());
+            }
+        } else {
+            // CENÁRIO B: PC Público (Lead sobrescrito) ou Cadastro Direto. Criamos um Lead novinho em folha!
+            leadDoMarketing = new Lead();
+
+            // Gera um UUID novo na marra, ignorando o visitorId "sujo" do PC público,
+            // ou usa um novo caso não tenha vindo nada do front.
+            leadDoMarketing.setVisitorId(java.util.UUID.randomUUID().toString());
+            leadDoMarketing.setUsuarioId(userId);
+            leadDoMarketing.setNome(nomeCompleto);
+            leadDoMarketing.setEmail(email);
+            leadDoMarketing.setWhatsapp(whatsapp); // Já salva o Zap na criação também!
+        }
+
+        // 5. Salva o Lead (seja ele atualizado ou novinho em folha)
+        // Isso garante que ele vai aparecer no LeadsDashboard e no seu Job de WhatsApp do Spring Batch!
+        leadRepository.save(leadDoMarketing);
+
+        // =========================================================
+        // 6. Salva o cliente oficial no PostgreSQL para liberar as compras
+        // =========================================================
         clienteRepository.save(novoCliente);
 
-        System.out.println("Cliente " + nomeCompleto + " criado no Keycloak e no Banco Local com sucesso!");
+        System.out.println("✅ Cliente " + nomeCompleto + " inserido no Keycloak, Cliente e na Esteira de Marketing (Lead)!");
     }
 
     /**
@@ -80,7 +119,7 @@ public class KeycloakUserService {
     private UserRepresentation criarRepresentacaoBasica(String email, String nomeCompleto) {
         UserRepresentation user = new UserRepresentation();
         // Setando o username igual ao email é uma boa prática para e-commerce
-        user.setUsername(email);
+        user.setUsername(nomeCompleto);
         user.setEmail(email);
         user.setEnabled(true);
         user.setEmailVerified(false);

@@ -45,6 +45,7 @@ public class AuthController {
                     dados.get("email"),
                     dados.get("senha"),
                     dados.get("nome"),
+                    dados.get("whatsapp"),
                     visitorId
             );
 

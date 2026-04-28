@@ -6,6 +6,8 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
+import java.math.BigDecimal;
+
 @Data
 @Entity
 public class LeadItem {
@@ -15,13 +17,10 @@ public class LeadItem {
     private Long id;
 
     private Integer quantidade;
-    private Double precoMomento; // Preço na hora que ele demonstrou interesse
+    private BigDecimal precoMomento; // Preço na hora que ele demonstrou interesse
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "lead_id")
-//    @JsonIgnore
-    @ToString.Exclude
-    @EqualsAndHashCode.Exclude
+    @JoinColumn(name = "lead_id", nullable = false)
     private Lead lead;
 
     @ManyToOne(fetch = FetchType.EAGER)

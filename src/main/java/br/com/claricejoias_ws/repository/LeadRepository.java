@@ -19,4 +19,6 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
     Page<Lead> findByAtivoTrueAndComprouFalse(Pageable pageable);
 
     Optional<Lead> findByWhatsapp(String whatsapp);
+
+    Optional<Lead> findByVisitorId(String visitorId);
 }

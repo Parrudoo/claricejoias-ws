@@ -21,7 +21,8 @@ public class Carrinho {
     @Column(unique = true)
     private String visitorId;
 
-//     Se o cliente fizer login depois, você vincula o ID do usuário aqui
+
+     @Column(unique = true)
      private String usuarioId;
 
     @OneToMany(mappedBy = "carrinho", cascade = CascadeType.ALL, orphanRemoval = true)

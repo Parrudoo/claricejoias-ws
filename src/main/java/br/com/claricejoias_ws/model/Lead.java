@@ -1,14 +1,15 @@
 package br.com.claricejoias_ws.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.ToString;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.List;
 
-@Data
+// 👇 Substituímos o @Data por Getter e Setter para evitar Loop Infinito de memória
+@Getter
+@Setter
 @Entity
 public class Lead {
 
@@ -20,11 +21,15 @@ public class Lead {
     private String whatsapp;
     private String email;
 
-    //  O elo de ligação com a navegação anônima
+    // O elo de ligação com a navegação anônima (Cookies do Front)
     @Column(name = "visitor_id", unique = true)
     private String visitorId;
 
-    // Novos campos para controle do painel
+    // O CAMPO NOVO: Elo de ligação com o Cliente Oficial (Keycloak)
+    @Column(name = "usuario_id")
+    private String usuarioId;
+
+    // Controles do painel
     private Boolean ativo = true;
     private Boolean comprou = false;
 
@@ -32,7 +37,7 @@ public class Lead {
     @OneToMany(mappedBy = "lead", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<LeadItem> itens = new ArrayList<>();
 
-    // Adicione a relação com o histórico e ordene da mais antiga para a mais recente
+    // Relacionamento com o histórico ordenado
     @OneToMany(mappedBy = "lead", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("dataHoraDisparo ASC")
     private List<HistoricoDisparo> historicoDisparos = new ArrayList<>();

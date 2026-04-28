@@ -12,10 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Locale;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -29,8 +26,7 @@ public class ClienteService {
     private final WhatsAppService whatsAppService;
     private final VendaRepository vendaRepository;
     private final ParcelaRepository parcelaRepository;
-    private final VisitanteRepository visitanteRepository;
-
+    private final LeadRepository leadRepository;
 
 
     // Adicionado Transactional readOnly para otimizar a leitura
@@ -54,38 +50,61 @@ public class ClienteService {
     public Cliente sincronizarClienteComKeycloak(Jwt jwt, String visitorId) {
         String usuarioId = jwt.getSubject(); // Pega o ID do Keycloak
         String email = jwt.getClaimAsString("email");
-        String nome = jwt.getClaimAsString("name"); // Ou "preferred_username" (depende da conf. do seu Keycloak)
+        String nome = jwt.getClaimAsString("name"); // Ou "preferred_username" (depende da conf. do Keycloak)
 
-        // 1. Verifica se o cliente já existe no nosso banco. Se sim, apenas retorna ele.
+        // 1. Verifica se o cliente já existe no banco. Se sim, apenas o retorna.
         return clienteRepository.findByUsuarioId(usuarioId).orElseGet(() -> {
 
-            // 2. Não existe! É o primeiro login após criar a conta. Vamos instanciar.
+            // 2. Não existe! É o primeiro login após criar a conta.
             Cliente novoCliente = new Cliente();
             novoCliente.setUsuarioId(usuarioId);
             novoCliente.setEmail(email);
             novoCliente.setNome(nome);
 
-            // 3. O Pulo do Gato: Tenta puxar os dados dele da época de Visitante/Lead
-            if (visitorId != null) {
-                visitanteRepository.findByVisitorUuid(visitorId).ifPresent(visitante -> {
+            // =========================================================
+            // 3. A MÁGICA DO FUNIL DE MARKETING (LEAD)
+            // =========================================================
+            Lead leadDoMarketing = null;
 
-                    // Se ele deixou o WhatsApp lá atrás (Guia de Medidas), já salvamos no perfil oficial dele!
-                    if (visitante.getWhatsapp() != null) {
-                        novoCliente.setTelefone(visitante.getWhatsapp());
-                    }
-
-                    // Se o Keycloak não enviou o nome, mas ele preencheu no Guia, a gente aproveita
-                    if (novoCliente.getNome() == null && visitante.getNome() != null) {
-                        novoCliente.setNome(visitante.getNome());
-                    }
-
-                    // Marca o visitante (Lead) atrelando ele ao novo Cliente
-                    visitante.setUsuarioId(usuarioId);
-                    visitanteRepository.save(visitante);
-                });
+            // Tenta achar se ele já era um Lead capturado (pelo visitorId)
+            if (visitorId != null && !visitorId.isEmpty()) {
+                leadDoMarketing = leadRepository.findByVisitorId(visitorId).orElse(null);
             }
 
-            // 4. Salva o cliente novinho em folha no banco
+            if (leadDoMarketing == null) {
+                // CENÁRIO A: O cara ignorou a isca digital e logou direto.
+                // Criamos um Lead silenciosamente para ele entrar na campanha de WhatsApp!
+                leadDoMarketing = new Lead();
+                leadDoMarketing.setVisitorId(visitorId != null ? visitorId : UUID.randomUUID().toString());
+                leadDoMarketing.setUsuarioId(usuarioId);
+                leadDoMarketing.setNome(nome);
+                leadDoMarketing.setEmail(email);
+            } else {
+                // CENÁRIO B: Ele já era Lead (baixou o E-book/Guia antes).
+                // Atualizamos os dados dele com as informações oficiais e validadas do Keycloak
+                leadDoMarketing.setUsuarioId(usuarioId);
+                leadDoMarketing.setEmail(email);
+
+                if (nome != null && !nome.isEmpty()) {
+                    leadDoMarketing.setNome(nome);
+                }
+
+                // Se ele deixou o WhatsApp lá atrás na captura, nós copiamos para o perfil do Cliente oficial!
+                if (leadDoMarketing.getWhatsapp() != null) {
+                    novoCliente.setTelefone(leadDoMarketing.getWhatsapp());
+                }
+
+                // Se o Keycloak não enviou o nome, mas ele preencheu no Guia, a gente aproveita
+                if (novoCliente.getNome() == null && leadDoMarketing.getNome() != null) {
+                    novoCliente.setNome(leadDoMarketing.getNome());
+                }
+            }
+
+            // 4. Salva o Lead (seja ele atualizado ou novinho em folha)
+            // Isso garante que todo cliente vai aparecer no seu LeadsDashboard!
+            leadRepository.save(leadDoMarketing);
+
+            // 5. Salva o cliente oficial no banco
             return clienteRepository.save(novoCliente);
         });
     }
