@@ -24,7 +24,7 @@ public class Cliente {
     @Column(nullable = false)
     private String nome;
 
-    @Column(unique = true) // Evita duplicar o mesmo WhatsApp
+    @Column(unique = true)
     private String telefone;
 
     @Column(unique = true)
@@ -32,22 +32,31 @@ public class Cliente {
 
     private String email;
 
-    // ID único gerado pelo Keycloak (o 'sub' do JWT)
     @Column(unique = true, nullable = false)
     private String usuarioId;
 
-    // NOVO: Campo necessário para a lógica de "dar baixa" funcionar
     @Column(name = "saldo_devedor", precision = 10, scale = 2)
     private BigDecimal saldoDevedor = BigDecimal.ZERO;
 
-    // Inicializar as listas evita NullPointerException ao criar um novo cliente
     @OneToMany(mappedBy = "cliente", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Venda> vendas = new ArrayList<>();
 
     @OneToMany(mappedBy = "cliente", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<HistoricoCobranca> historicoCobrancas = new ArrayList<>();
 
-    // NOVO: Mapeamento para o histórico de pagamentos/baixas que criamos
     @OneToMany(mappedBy = "cliente", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Pagamento> pagamentos = new ArrayList<>();
+
+    // ========================================================================
+    // ENCAPSULAMENTO DAS REGRAS DE NEGÓCIO (SOBRESCREVENDO O LOMBOK)
+    // ========================================================================
+
+    public void setWhatsapp(String whatsapp) {
+        // Se vier nulo, guarda nulo. Se vier preenchido, limpa tudo que não for número.
+        this.whatsapp = (whatsapp != null) ? whatsapp.replaceAll("[^0-9]", "") : null;
+    }
+
+    public void setTelefone(String telefone) {
+        this.telefone = (telefone != null) ? telefone.replaceAll("[^0-9]", "") : null;
+    }
 }

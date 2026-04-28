@@ -128,6 +128,7 @@ public class VendaService {
                         Cliente novo = new Cliente();
                         novo.setNome(dto.getCliente().getNome());
                         novo.setTelefone(dto.getCliente().getTelefone());
+                        novo.setUsuarioId(java.util.UUID.randomUUID().toString());
                         return clienteRepository.save(novo);
                     });
             venda.setCliente(cliente);

@@ -1,68 +1,67 @@
 /* ==============================================
    IMPORTAÇÃO DAS FONTES (Sempre no topo!)
    ============================================== */
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Montserrat:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Montserrat:wght@300;400;500;600&display=swap');
 
 /* ==============================================
    FUNDO DA PÁGINA E ALINHAMENTO GERAL
    ============================================== */
 body.login-pf-page {
-    background-color: #050505; /* Preto super profundo */
-    /* Cria um brilho dourado sutil vindo do topo simulando uma iluminação de vitrine */
+    background-color: #050505;
     background-image: radial-gradient(circle at 50% -20%, rgba(212, 175, 55, 0.15) 0%, #050505 60%);
     font-family: 'Montserrat', sans-serif;
     color: #e0e0e0;
+    display: grid !important;
+    place-content: center !important;
+    min-height: 100vh;
     margin: 0;
     padding: 0;
-    min-height: 100vh;
-
-    /* O SEGREDO DO ALINHAMENTO PERFEITO ESTÁ AQUI: */
-    display: flex;
-    flex-direction: column; /* Empilha o título e o cartão verticalmente */
-    align-items: center; /* Centraliza no eixo horizontal */
-    justify-content: center; /* Centraliza no eixo vertical (meio exato da tela) */
 }
 
-/* Força as caixas invisíveis do Keycloak a não atrapalharem o centro da tela */
+/* Centraliza os containers internos do Keycloak */
+.login-pf-layout,
 #kc-header,
 #kc-content,
-.login-pf-layout {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
+#kc-content-wrapper {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
 }
 
 /* ==============================================
    CARTÃO DE LOGIN (GLASSMORPHISM)
    ============================================== */
 .login-pf-page .card-pf {
-    background: rgba(15, 15, 15, 0.85); /* Fundo quase transparente */
-    backdrop-filter: blur(12px); /* Efeito de vidro borrado no fundo */
+    margin: 0 auto !important;
+    background: rgba(15, 15, 15, 0.85);
+    backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(212, 175, 55, 0.2); /* Borda dourada muito fina e sutil */
+    border: 1px solid rgba(212, 175, 55, 0.2);
     border-radius: 8px;
-    box-shadow: 0 25px 50px rgba(0,0,0,0.9); /* Sombra pesada para dar profundidade */
+    box-shadow: 0 25px 50px rgba(0,0,0,0.9);
     padding: 3.5rem 3rem;
-    max-width: 420px;
     width: 100%;
+    max-width: 420px;
+    box-sizing: border-box;
 }
 
 /* ==============================================
    CABEÇALHO / LOGO (CLARICE JOIAS)
    ============================================== */
 #kc-header-wrapper {
-    font-family: 'Playfair Display', serif; /* Fonte clássica de luxo */
+    font-family: 'Playfair Display', serif;
     font-size: 36px;
-    color: #D4AF37; /* Dourado */
+    color: #D4AF37;
     letter-spacing: 3px;
     text-transform: uppercase;
     text-align: center;
-    margin-bottom: 5px;
+    margin-bottom: 20px;
 }
 
-/* Adiciona um subtítulo elegante automaticamente abaixo da logo */
 #kc-header-wrapper::after {
     content: "ACESSÓRIOS DE LUXO";
     display: block;
@@ -73,24 +72,42 @@ body.login-pf-page {
     margin-top: 8px;
 }
 
-/* Remove a linha feia que divide o título no Keycloak padrão */
 .login-pf-page .login-pf-header {
     border-bottom: none !important;
-    margin-bottom: 2rem;
+    margin-bottom: 0 !important;
 }
 
 /* ==============================================
-   FORMULÁRIO E LABELS (Usuário e Senha)
+   TÍTULO DO FORMULÁRIO ("Entrar na sua conta")
    ============================================== */
-.login-pf-page .control-label {
+#kc-page-title {
     color: #D4AF37;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 16px;
     font-weight: 500;
+    text-align: center;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
-    font-size: 11px;
-    margin-bottom: 8px;
-    text-align: left;
-    display: block;
+    letter-spacing: 2px;
+    margin-top: 0;
+    margin-bottom: 30px;
+}
+
+/* ==============================================
+   TEXTO EM CIMA DO INPUT ("Nome de usuário" e "Senha")
+   ============================================== */
+.login-pf-page label,
+.login-pf-page .control-label,
+.pf-c-form__label-text,
+.pf-v5-c-form__label-text {
+    color: #FFFFFF !important;
+    font-family: 'Montserrat', sans-serif !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1.5px !important;
+    font-size: 11px !important;
+    margin-bottom: 8px !important;
+    text-align: left !important;
+    display: block !important;
 }
 
 /* ==============================================
@@ -108,7 +125,6 @@ body.login-pf-page {
     transition: all 0.3s ease;
 }
 
-/* Foco do input brilha em dourado */
 .login-pf-page .form-control:focus {
     border-bottom: 1px solid #D4AF37;
     background: transparent;
@@ -149,6 +165,37 @@ input:-webkit-autofill:active{
 }
 
 /* ==============================================
+   CABEÇALHO / LOGO (CLARICE JOIAS)
+   ============================================== */
+#kc-header-wrapper {
+    font-size: 0 !important; /* Esconde o nome do Realm padrão que o Keycloak injeta */
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+/* O Nome Principal que substitui o texto original */
+#kc-header-wrapper::before {
+    content: "CLARICE JOIAS"; /* Escreva aqui exatamente como quer que apareça */
+    display: block;
+    font-family: 'Playfair Display', serif;
+    font-size: 36px;
+    color: #D4AF37;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+}
+
+/* O Subtítulo elegante abaixo da logo */
+#kc-header-wrapper::after {
+    content: "ACESSÓRIOS DE LUXO";
+    display: block;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 10px;
+    letter-spacing: 5px;
+    color: #888;
+    margin-top: 8px;
+}
+
+/* ==============================================
    LINKS (Esqueci a senha, etc)
    ============================================== */
 .login-pf-page a {
@@ -171,84 +218,3 @@ input:-webkit-autofill:active{
 .pf-c-brand {
     display: none;
 }
-
-/* Importando fontes elegantes do Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Montserrat:wght@300;400;500&display=swap');
-
-/* ==============================================
-   FUNDO DA PÁGINA E ALINHAMENTO (MÉTODO BLINDADO)
-   ============================================== */
-body.login-pf-page {
-    background-color: #050505; /* Preto super profundo */
-    background-image: radial-gradient(circle at 50% -20%, rgba(212, 175, 55, 0.15) 0%, #050505 60%);
-    font-family: 'Montserrat', sans-serif;
-    color: #e0e0e0;
-
-    /* O Grid é o método mais forte do CSS para centralizar */
-    display: grid !important;
-    place-content: center !important;
-    min-height: 100vh;
-    margin: 0;
-    padding: 0;
-}
-
-/* Arranca as margens secretas que o Keycloak coloca por padrão */
-.login-pf-layout,
-#kc-header,
-#kc-content,
-#kc-content-wrapper {
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: center !important;
-    justify-content: center !important;
-    width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-}
-
-/* ==============================================
-   CABEÇALHO / LOGO (CLARICE JOIAS)
-   ============================================== */
-#kc-header-wrapper {
-    font-family: 'Playfair Display', serif;
-    font-size: 36px;
-    color: #D4AF37;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    text-align: center;
-    margin-bottom: 20px; /* Dá um respiro antes do cartão */
-}
-
-#kc-header-wrapper::after {
-    content: "ACESSÓRIOS DE LUXO";
-    display: block;
-    font-family: 'Montserrat', sans-serif;
-    font-size: 10px;
-    letter-spacing: 5px;
-    color: #888;
-    margin-top: 8px;
-}
-
-.login-pf-page .login-pf-header {
-    border-bottom: none !important;
-    margin-bottom: 0 !important;
-}
-
-/* ==============================================
-   CARTÃO DE LOGIN (GLASSMORPHISM)
-   ============================================== */
-.login-pf-page .card-pf {
-    margin: 0 auto !important; /* Garante que ele não fuja pro lado */
-    background: rgba(15, 15, 15, 0.85);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(212, 175, 55, 0.2);
-    border-radius: 8px;
-    box-shadow: 0 25px 50px rgba(0,0,0,0.9);
-    padding: 3.5rem 3rem;
-    width: 100%;
-    max-width: 420px;
-    box-sizing: border-box;
-}
-
-/* Daqui para baixo, mantenha o seu código normal (Inputs, Botões, etc...) */

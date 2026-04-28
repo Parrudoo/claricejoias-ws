@@ -47,4 +47,11 @@ public class Lead {
         itens.add(item);
         item.setLead(this);
     }
+
+    public void setWhatsapp(String whatsapp) {
+        // Se vier nulo, guarda nulo. Se vier preenchido, limpa tudo que não for número.
+        this.whatsapp = (whatsapp != null) ? whatsapp.replaceAll("[^0-9]", "") : null;
+    }
+
+
 }
