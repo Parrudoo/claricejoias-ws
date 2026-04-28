@@ -57,42 +57,45 @@ public class LeadService {
     }
 
     @Transactional
-    public Lead processarNovoLead(LeadRequestDTO dto) {
+    public Lead processarNovoLead(LeadRequestDTO dto, String visitorId) { // Recebendo o visitorId aqui
 
         // ==========================================
         // ETAPA 1: INTEGRAÇÃO COM KEYCLOAK
         // ==========================================
         if (dto.isCriarConta() && dto.getSenha() != null && !dto.getSenha().trim().isEmpty()) {
-            keycloakUserService.criarUsuarioCliente(dto.getEmail(), dto.getSenha(), dto.getNome());
+            // Agora passamos o visitorId para criar o Cliente no banco local com o histórico!
+            keycloakUserService.criarUsuarioCliente(dto.getEmail(), dto.getSenha(), dto.getNome(), visitorId);
         }
 
         // ==========================================
         // ETAPA 2: BUSCA OU CRIAÇÃO DO LEAD
         // ==========================================
-        // Busca no banco de dados se já existe um Lead com esse WhatsApp
         Optional<Lead> leadExistente = repository.findByWhatsapp(dto.getWhatsapp());
         Lead lead;
 
         if (leadExistente.isPresent()) {
-            // Se existir, nós vamos apenas atualizar os dados
             lead = leadExistente.get();
             lead.setNome(dto.getNome());
             lead.setEmail(dto.getEmail());
-            lead.setAtivo(true); // Reativa o lead, caso estivesse inativo
-            lead.setComprou(false); // Reseta a compra, já que é uma nova tentativa de checkout
+            lead.setAtivo(true);
+            lead.setComprou(false);
 
-            // Limpa os itens antigos do carrinho abandonado anterior
+            // Atualiza o rastro de navegação caso ele esteja usando outro PC/Celular
+            if (visitorId != null) {
+                lead.setVisitorId(visitorId);
+            }
+
             if (lead.getItens() != null) {
                 lead.getItens().clear();
             }
         } else {
-            // Se não existir, instanciamos um novo
             lead = new Lead();
             lead.setWhatsapp(dto.getWhatsapp());
             lead.setNome(dto.getNome());
             lead.setEmail(dto.getEmail());
             lead.setAtivo(true);
             lead.setComprou(false);
+            lead.setVisitorId(visitorId); // 👈 Salva de onde esse lead veio
         }
 
         // ==========================================
@@ -100,7 +103,6 @@ public class LeadService {
         // ==========================================
         if (dto.getItens() != null && !dto.getItens().isEmpty()) {
             dto.getItens().forEach(itemDto -> {
-                // Busca o produto real no banco para fazer a ligação
                 Optional<Produto> produtoOpt = produtoService.buscarPorId(itemDto.getId());
 
                 if (produtoOpt.isPresent()) {
@@ -108,7 +110,7 @@ public class LeadService {
                     leadItem.setProduto(produtoOpt.get());
                     leadItem.setQuantidade(itemDto.getQuantidade());
                     leadItem.setPrecoMomento(itemDto.getPreco());
-                    lead.addItem(leadItem); // Vincula o novo item ao lead
+                    lead.addItem(leadItem);
                 }
             });
         }

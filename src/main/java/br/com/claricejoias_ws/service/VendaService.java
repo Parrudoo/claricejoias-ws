@@ -69,7 +69,7 @@ public class VendaService {
             // GERA AS PARCELAS
             int qtdParcelas = venda.getParcelas();
 
-            // 👇 O SEGREDO DA DIVISÃO COM BIGDECIMAL:
+            //  O SEGREDO DA DIVISÃO COM BIGDECIMAL:
             // Divide pelo número de parcelas, força 2 casas decimais, e arredonda padrão (ex: 33.33)
             BigDecimal valorPorParcela = saldoDevedor.divide(
                     BigDecimal.valueOf(qtdParcelas), 2, RoundingMode.HALF_UP

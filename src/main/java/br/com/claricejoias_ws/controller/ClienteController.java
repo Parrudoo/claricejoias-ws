@@ -1,12 +1,15 @@
 package br.com.claricejoias_ws.controller;
 
 import br.com.claricejoias_ws.dto.*;
+import br.com.claricejoias_ws.model.Cliente;
 import br.com.claricejoias_ws.service.AutenticacaoService;
 import br.com.claricejoias_ws.service.ClienteService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -31,6 +34,19 @@ public class ClienteController {
     @GetMapping("/pendentes")
     public ResponseEntity<List<ClienteResponseDTO>> listarPendentes() {
         return ResponseEntity.ok(clienteService.listarPendentes());
+    }
+
+
+    @GetMapping("/me")
+    @Operation(summary = "Obter Meu Perfil", description = "Retorna os dados do cliente logado. Se for o primeiro acesso, cria o cliente no banco de dados e sincroniza com os dados de Lead.")
+    public ResponseEntity<Cliente> obterMeuPerfil(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestHeader(value = "X-Visitor-ID", required = false) String visitorId) {
+
+        // Se for a primeira vez, ele cria. Se não, apenas devolve o cliente existente.
+        Cliente cliente = clienteService.sincronizarClienteComKeycloak(jwt, visitorId);
+
+        return ResponseEntity.ok(cliente);
     }
 
     @Operation(summary = "Registrar um histórico de cobrança realizada por um funcionário")

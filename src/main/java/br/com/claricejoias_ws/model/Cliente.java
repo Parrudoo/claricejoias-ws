@@ -32,6 +32,10 @@ public class Cliente {
 
     private String email;
 
+    // ID único gerado pelo Keycloak (o 'sub' do JWT)
+    @Column(unique = true, nullable = false)
+    private String usuarioId;
+
     // NOVO: Campo necessário para a lógica de "dar baixa" funcionar
     @Column(name = "saldo_devedor", precision = 10, scale = 2)
     private BigDecimal saldoDevedor = BigDecimal.ZERO;

@@ -5,6 +5,7 @@ import br.com.claricejoias_ws.model.ItemCarrinho;
 import br.com.claricejoias_ws.model.Produto;
 import br.com.claricejoias_ws.repository.CarrinhoRepository;
 import br.com.claricejoias_ws.repository.ProdutoRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,15 +14,25 @@ import java.util.Optional;
 
 
 @Service
+@RequiredArgsConstructor
 public class CarrinhoService {
 
-    @Autowired private CarrinhoRepository carrinhoRepository;
-    @Autowired private ProdutoRepository produtoRepository;
+     private final  CarrinhoRepository carrinhoRepository;
+     private final ProdutoRepository produtoRepository;
+     private final VisitanteService visitanteService;
+
 
     @Transactional
     public Carrinho obterOuCriarCarrinho(String visitorId, String usuarioId) {
+
         // 1. Prioridade: Usuário Logado
         if (usuarioId != null && !usuarioId.isEmpty()) {
+
+            // --- A MÁGICA ACONTECE AQUI ---
+            // Converte o Visitante/Lead em Cliente oficial no banco
+            visitanteService.vincularVisitanteAoUsuarioLogado(visitorId, usuarioId);
+            // ------------------------------
+
             Carrinho carrinhoOficial = carrinhoRepository.findByUsuarioId(usuarioId)
                     .orElseGet(() -> {
                         Carrinho novo = new Carrinho();
@@ -29,20 +40,17 @@ public class CarrinhoService {
                         return carrinhoRepository.saveAndFlush(novo);
                     });
 
-            // Verifica se existe um carrinho anônimo para fundir
+            // Lógica de mesclar o carrinho anônimo com o oficial
             if (visitorId != null) {
                 carrinhoRepository.findByVisitorId(visitorId).ifPresent(anonimo -> {
-                    // Em vez de mover o objeto (que tem o ID antigo),
-                    // apenas pegamos a lógica de negócio (Produto e Quantidade)
-                    for (ItemCarrinho itemAnon : anonimo.getItens()) {
 
+                    // Transfere os itens do anônimo para o oficial
+                    for (ItemCarrinho itemAnon : anonimo.getItens()) {
                         carrinhoOficial.getItens().stream()
                                 .filter(i -> i.getProduto().getId().equals(itemAnon.getProduto().getId()))
                                 .findFirst()
                                 .ifPresentOrElse(
-                                        // Se já tem o produto no oficial, apenas soma a quantidade
                                         itemOficial -> itemOficial.setQuantidade(itemOficial.getQuantidade() + itemAnon.getQuantidade()),
-                                        // Se não tem, cria um NOVO item vinculado ao oficial
                                         () -> {
                                             ItemCarrinho novoItem = new ItemCarrinho();
                                             novoItem.setProduto(itemAnon.getProduto());
@@ -53,17 +61,17 @@ public class CarrinhoService {
                                 );
                     }
 
-                    // IMPORTANTE: Primeiro limpamos os itens do anônimo para evitar o erro de Constraint
+                    // Limpa e deleta o carrinho anônimo
                     anonimo.getItens().clear();
                     carrinhoRepository.delete(anonimo);
-                    carrinhoRepository.flush(); // Garante que o anônimo morreu antes de seguir
+                    carrinhoRepository.flush();
                 });
             }
 
             return carrinhoRepository.saveAndFlush(carrinhoOficial);
         }
 
-        // 2. Fluxo Anônimo
+        // 2. Fluxo Anônimo (Usuário não está logado)
         return carrinhoRepository.findByVisitorId(visitorId)
                 .orElseGet(() -> {
                     Carrinho novo = new Carrinho();

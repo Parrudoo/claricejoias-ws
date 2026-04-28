@@ -44,6 +44,22 @@ public class VisitanteService {
     }
 
     @Transactional
+    public void vincularVisitanteAoUsuarioLogado(String visitorId, String usuarioId) {
+        if (visitorId == null || usuarioId == null) return;
+
+        visitanteRepository.findByVisitorUuid(visitorId).ifPresent(visitante -> {
+            // Se o visitante ainda não tem um usuário logado vinculado a ele
+            if (visitante.getUsuarioId() == null) {
+                visitante.setUsuarioId(usuarioId);
+                visitanteRepository.save(visitante);
+
+                // PRONTO! Neste exato momento, o Visitante/Lead virou um CLIENTE no seu banco de dados.
+                // Aqui você poderia, no futuro, disparar um email de boas-vindas.
+            }
+        });
+    }
+
+    @Transactional
     public void converterEmLead(LeadDTO dto, String visitorId) {
         // Limpa tudo que não for número
         String whatsappLimpo = dto.getWhatsapp().replaceAll("[^0-9]", "");

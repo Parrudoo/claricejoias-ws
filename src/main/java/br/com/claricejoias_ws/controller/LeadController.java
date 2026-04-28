@@ -30,12 +30,14 @@ public class LeadController {
     private final ModelMapper modelMapper;
 
 
-    @Operation(summary = "Capturar novo lead", description = "Recebe os dados, cria a conta no Keycloak (se solicitado) e salva o pedido no banco.")
+    @Operation(summary = "Capturar novo lead", description = "Recebe os dados, cria a conta no Keycloak (se solicitado), vincula o histórico do visitante e salva no banco.")
     @PostMapping
-    public ResponseEntity<Lead> capturarLead(@RequestBody LeadRequestDTO dto) {
+    public ResponseEntity<Lead> capturarLead(
+            @RequestBody LeadRequestDTO dto,
+            @RequestHeader(value = "X-Visitor-ID", required = false) String visitorId) { // 1. Captura o ID do cabeçalho
 
-        // O Service faz toda a mágica do Keycloak e Banco de Dados
-        Lead salvo = leadService.processarNovoLead(dto);
+        // 2. Passa o visitorId para o Service fazer a mágica de mesclagem do histórico
+        Lead salvo = leadService.processarNovoLead(dto, visitorId);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(salvo);
     }

@@ -1,55 +1,86 @@
 package br.com.claricejoias_ws.service;
 
-import br.com.claricejoias_ws.exceptions.RegraNegocioException; // 👇 IMPORTANTE: Importe a sua exceção!
+import br.com.claricejoias_ws.exceptions.RegraNegocioException;
+import br.com.claricejoias_ws.model.Cliente;
+import br.com.claricejoias_ws.repository.ClienteRepository;
+import br.com.claricejoias_ws.repository.VisitanteRepository; // Adicione esse repositório
 import jakarta.ws.rs.core.Response;
+import lombok.RequiredArgsConstructor;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
 
 @Service
+@RequiredArgsConstructor
 public class KeycloakUserService {
 
-    @Autowired
-    private Keycloak keycloak;
+    private final Keycloak keycloak;
+    private final ClienteRepository clienteRepository;
+    private final VisitanteRepository visitanteRepository; // Injetado para buscar os dados de Lead
 
     private final String REALM_NAME = "claricejoias";
 
     /**
      * Fluxo para Clientes: Cadastro direto com senha definida no modal da loja.
+     * Agora recebe o visitorId para aproveitar os dados do Lead!
      */
-    public void criarUsuarioCliente(String email, String senha, String nomeCompleto) {
+    @Transactional // Adicionado para garantir que salve no banco de dados com segurança
+    public void criarUsuarioCliente(String email, String senha, String nomeCompleto, String visitorId) {
         UserRepresentation user = criarRepresentacaoBasica(email, nomeCompleto);
 
+        // 1. Cria no Keycloak
         Response response = keycloak.realm(REALM_NAME).users().create(user);
-        processarResposta(response, senha, "cliente");
+
+        // 2. Processa a resposta e pega o ID gerado pelo Keycloak
+        String userId = processarResposta(response, senha, "cliente");
+
+        // 3. CRIA O CLIENTE NO BANCO DE DADOS LOCAL
+        Cliente novoCliente = new Cliente();
+        novoCliente.setUsuarioId(userId); // Esse é o vínculo com o Keycloak!
+        novoCliente.setEmail(email);
+        novoCliente.setNome(nomeCompleto);
+
+        // 4. Aproveita os dados de Lead (se o visitante baixou o e-book)
+        if (visitorId != null && !visitorId.isEmpty()) {
+            visitanteRepository.findByVisitorUuid(visitorId).ifPresent(visitante -> {
+                // Se ele tinha deixado o WhatsApp lá atrás, já preenchemos no perfil dele
+                if (visitante.getWhatsapp() != null) {
+                    novoCliente.setTelefone(visitante.getWhatsapp());
+                }
+
+                // Marca o visitante vinculando-o ao novo usuário oficial
+                visitante.setUsuarioId(userId);
+                visitanteRepository.save(visitante);
+            });
+        }
+
+        // 5. Salva o cliente oficial no PostgreSQL
+        clienteRepository.save(novoCliente);
+
+        System.out.println("Cliente " + nomeCompleto + " criado no Keycloak e no Banco Local com sucesso!");
     }
 
     /**
      * Fluxo para Funcionários (ADM): Cadastro sem senha.
-     * O Keycloak exigirá que ele crie a senha no primeiro acesso.
      */
     public void criarUsuarioFuncionario(String email, String nomeCompleto) {
         UserRepresentation user = criarRepresentacaoBasica(email, nomeCompleto);
-
-        // A MÁGICA: Define que o usuário PRECISA resetar a senha ao entrar
         user.setRequiredActions(Collections.singletonList("UPDATE_PASSWORD"));
-
         Response response = keycloak.realm(REALM_NAME).users().create(user);
-
-        // Passamos null na senha pois ele mesmo vai criar
         processarResposta(response, null, "ADMIN");
     }
 
-    // --- MÉTODOS AUXILIARES PARA LIMPEZA DO CÓDIGO ---
+    // --- MÉTODOS AUXILIARES ---
 
     private UserRepresentation criarRepresentacaoBasica(String email, String nomeCompleto) {
         UserRepresentation user = new UserRepresentation();
-        user.setUsername(nomeCompleto);
+        // Setando o username igual ao email é uma boa prática para e-commerce
+        user.setUsername(email);
         user.setEmail(email);
         user.setEnabled(true);
         user.setEmailVerified(false);
@@ -62,24 +93,23 @@ public class KeycloakUserService {
         return user;
     }
 
-    private void processarResposta(Response response, String senha, String roleName) {
+    /**
+     * Agora este método retorna o ID do Keycloak criado (String)
+     */
+    private String processarResposta(Response response, String senha, String roleName) {
         if (response.getStatus() == 201) {
             String userId = response.getLocation().getPath().replaceAll(".*/([^/]+)$", "$1");
 
-            // Se foi enviada uma senha (caso do cliente), define agora
             if (senha != null) {
                 definirSenha(userId, senha);
             }
-
-            // Atribui o cargo (cliente ou admin)
             atribuirRole(userId, roleName);
 
-            System.out.println("Usuário [" + roleName + "] criado com sucesso!");
+            // Retorna o ID gerado para ser usado na criação do Cliente local
+            return userId;
         } else if (response.getStatus() == 409) {
-            // 👇 AQUI ESTÁ A CORREÇÃO! Usando a classe que o Interceptador escuta.
             throw new RegraNegocioException("Este e-mail já está cadastrado.");
         } else {
-            // 👇 Também ajustei aqui para não vazar erro genérico pro Front
             throw new RegraNegocioException("Falha ao criar usuário no Keycloak. Tente novamente mais tarde.");
         }
     }

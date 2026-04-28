@@ -22,4 +22,6 @@ public interface ClienteRepository extends JpaRepository<Cliente, Long> {
     List<Cliente> findClientesInadimplentes();
 
     Optional<Cliente> findByWhatsapp(String whatsapp);
+
+    Optional<Cliente> findByUsuarioId(String usuarioId);
 }

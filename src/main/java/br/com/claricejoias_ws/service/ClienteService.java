@@ -5,6 +5,7 @@ import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.*;
 import br.com.claricejoias_ws.repository.*;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +29,8 @@ public class ClienteService {
     private final WhatsAppService whatsAppService;
     private final VendaRepository vendaRepository;
     private final ParcelaRepository parcelaRepository;
+    private final VisitanteRepository visitanteRepository;
+
 
 
     // Adicionado Transactional readOnly para otimizar a leitura
@@ -44,6 +47,47 @@ public class ClienteService {
         return clienteRepository.findClientesInadimplentes().stream()
                 .map(this::converterParaDTO)
                 .collect(Collectors.toList());
+    }
+
+
+    @Transactional
+    public Cliente sincronizarClienteComKeycloak(Jwt jwt, String visitorId) {
+        String usuarioId = jwt.getSubject(); // Pega o ID do Keycloak
+        String email = jwt.getClaimAsString("email");
+        String nome = jwt.getClaimAsString("name"); // Ou "preferred_username" (depende da conf. do seu Keycloak)
+
+        // 1. Verifica se o cliente já existe no nosso banco. Se sim, apenas retorna ele.
+        return clienteRepository.findByUsuarioId(usuarioId).orElseGet(() -> {
+
+            // 2. Não existe! É o primeiro login após criar a conta. Vamos instanciar.
+            Cliente novoCliente = new Cliente();
+            novoCliente.setUsuarioId(usuarioId);
+            novoCliente.setEmail(email);
+            novoCliente.setNome(nome);
+
+            // 3. O Pulo do Gato: Tenta puxar os dados dele da época de Visitante/Lead
+            if (visitorId != null) {
+                visitanteRepository.findByVisitorUuid(visitorId).ifPresent(visitante -> {
+
+                    // Se ele deixou o WhatsApp lá atrás (Guia de Medidas), já salvamos no perfil oficial dele!
+                    if (visitante.getWhatsapp() != null) {
+                        novoCliente.setTelefone(visitante.getWhatsapp());
+                    }
+
+                    // Se o Keycloak não enviou o nome, mas ele preencheu no Guia, a gente aproveita
+                    if (novoCliente.getNome() == null && visitante.getNome() != null) {
+                        novoCliente.setNome(visitante.getNome());
+                    }
+
+                    // Marca o visitante (Lead) atrelando ele ao novo Cliente
+                    visitante.setUsuarioId(usuarioId);
+                    visitanteRepository.save(visitante);
+                });
+            }
+
+            // 4. Salva o cliente novinho em folha no banco
+            return clienteRepository.save(novoCliente);
+        });
     }
 
     @Transactional

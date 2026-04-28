@@ -40,6 +40,7 @@ public class SecurityConfigurations {
                         .requestMatchers("api/carrinho/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/clientes/me/**").permitAll()
 
                         // A SOLUÇÃO ESTÁ AQUI: Libera o POST (Cadastro) de Leads para os visitantes
                         .requestMatchers(HttpMethod.POST, "/api/leads").permitAll()

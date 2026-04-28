@@ -28,6 +28,10 @@ public class Visitante {
     @Column(name = "data_primeiro_acesso")
     private LocalDateTime dataPrimeiroAcesso;
 
+    // Dados de Cliente (Preenchido quando ele faz cadastro/login via Keycloak)
+    @Column(unique = true)
+    private String usuarioId;
+
     @PrePersist
     public void prePersist() {
         this.dataPrimeiroAcesso = LocalDateTime.now();

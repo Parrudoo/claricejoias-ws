@@ -2,6 +2,7 @@ package br.com.claricejoias_ws.controller;
 
 import br.com.claricejoias_ws.service.KeycloakAuthService;
 import br.com.claricejoias_ws.service.KeycloakUserService;
+import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,8 +21,6 @@ public class AuthController {
     @Autowired
     private KeycloakUserService userService;
 
-    // O login continua igual, mas o ideal no React (SPA) é que o React faça o login direto no Keycloak!
-    // Se o seu React já está redirecionando pra tela preta do Keycloak, VOCÊ NÃO PRECISA DESSE MÉTODO.
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody Map<String, String> credenciais) {
         try {
@@ -34,12 +33,21 @@ public class AuthController {
         }
     }
 
-    // O cadastro dos clientes via botão do site fica aqui!
+    @Operation(summary = "Cadastrar novo cliente", description = "Cria a conta no Keycloak, cria o perfil no banco local e vincula o histórico do visitante (Lead).")
     @PostMapping("/cadastro")
-    public ResponseEntity<?> cadastrar(@RequestBody Map<String, String> dados) {
+    public ResponseEntity<?> cadastrar(
+            @RequestBody Map<String, String> dados,
+            @RequestHeader(value = "X-Visitor-ID", required = false) String visitorId) { // 1. Recebendo o ID do visitante
         try {
-            // O serviço precisa ser ajustado para garantir que a Role "cliente" seja dada!
-            userService.criarUsuarioCliente(dados.get("email"), dados.get("senha"), dados.get("nome"));
+
+            // 2. Repassando o visitorId para o serviço sincronizar tudo no banco de dados!
+            userService.criarUsuarioCliente(
+                    dados.get("email"),
+                    dados.get("senha"),
+                    dados.get("nome"),
+                    visitorId
+            );
+
             return ResponseEntity.status(HttpStatus.CREATED).body(Collections.singletonMap("mensagem", "Conta criada com sucesso!"));
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Collections.singletonMap("erro", e.getMessage()));
