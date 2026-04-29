@@ -35,6 +35,23 @@ public class ProdutoController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @GetMapping("/rascunhos")
+    public ResponseEntity<List<ProdutoDTO>> listarRascunhosPendentes() {
+        return ResponseEntity.ok(produtoService.listarRascunhos());
+    }
+
+
+    @PostMapping("/importar-xml")
+    public ResponseEntity<Void> importarXmlNfe(@RequestParam("file") MultipartFile file) {
+        try {
+            produtoService.processarXmlNfe(file);
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
     // CORREÇÃO AQUI: Adicionado o prefixo /codigo/ na rota para diferenciar do buscarPorId
     @Operation(summary = "Buscar produto pelo Código de Barras/SKU")
     @GetMapping("/codigo/{codigo}")
@@ -72,6 +89,8 @@ public class ProdutoController {
             return ResponseEntity.notFound().build();
         }
     }
+
+
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deletar(@PathVariable Long id) {

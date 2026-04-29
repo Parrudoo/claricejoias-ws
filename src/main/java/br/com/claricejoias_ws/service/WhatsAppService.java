@@ -12,6 +12,7 @@ import br.com.claricejoias_ws.repository.FilaCobrancaRepository;
 import br.com.claricejoias_ws.repository.FilaDisparoRepository;
 import br.com.claricejoias_ws.repository.HistoricoCobrancaRepository;
 import br.com.claricejoias_ws.repository.HistoricoDisparoRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -26,6 +27,7 @@ import java.util.Map;
 import java.util.Optional;
 
 @Service
+@RequiredArgsConstructor
 public class WhatsAppService {
 
     private final RestTemplate restTemplate;

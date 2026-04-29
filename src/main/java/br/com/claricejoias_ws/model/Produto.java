@@ -20,6 +20,9 @@ public class Produto {
     private Integer estoque;
     private String codigo;
 
+    @Column(name = "rascunho")
+    private boolean rascunho = true;
+
     // Campo atualizado para suportar uma lista de imagens
     @ElementCollection
     @CollectionTable(name = "produto_imagens", joinColumns = @JoinColumn(name = "produto_id"))

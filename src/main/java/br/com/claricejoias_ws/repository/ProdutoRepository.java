@@ -12,4 +12,8 @@ public interface ProdutoRepository extends JpaRepository<Produto,Long> {
     List<Produto> findBySubcategoriaId(Long id);
 
     Optional<Produto> findByCodigo(String codigo);
+
+    List<Produto> findBySubcategoriaIsNull();
+
+    List<Produto> findByRascunhoTrue();
 }

@@ -9,11 +9,20 @@ import org.modelmapper.Converters;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.w3c.dom.Document;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 
+import org.w3c.dom.Element;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -58,6 +67,7 @@ public class ProdutoService {
 
             // Em vez de setPathImg, agora você precisa setar uma lista
             produto.setLoginUsuario(autenticacaoService.getUsername());
+            produto.setRascunho(false);
             produto.setImagens(caminhosImagens);
         }
 
@@ -73,6 +83,8 @@ public class ProdutoService {
             produto.setMaterial(produtoAtualizado.getMaterial());
             produto.setEstoque(produtoAtualizado.getEstoque());
             produto.setLoginUsuario(autenticacaoService.getUsername());
+            produto.setSubcategoria(produtoAtualizado.getSubcategoria());
+            produto.setRascunho(false);
             // produto.setSubcategoria(produtoAtualizado.getSubcategoria());
 
             // Se o usuário enviou arquivos novos na hora de editar
@@ -130,9 +142,78 @@ public class ProdutoService {
         });
     }
 
+    @Transactional
+    public void processarXmlNfe(MultipartFile file) throws Exception {
+        // Configura o parser XML nativo do Java
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        DocumentBuilder builder = factory.newDocumentBuilder();
+        Document document = builder.parse(file.getInputStream());
+        document.getDocumentElement().normalize();
+
+        // Pega todos os itens da nota (tag <det>)
+        NodeList nList = document.getElementsByTagName("det");
+
+        for (int i = 0; i < nList.getLength(); i++) {
+            Node node = nList.item(i);
+
+            if (node.getNodeType() == Node.ELEMENT_NODE) {
+                Element element = (Element) node;
+
+                // Extrai as tags específicas dentro de <prod>
+                String cProd = getTagValue("cProd", element);
+                String xProd = getTagValue("xProd", element);
+                String vUnComStr = getTagValue("vUnCom", element);
+
+                // O fornecedor pode mandar "SEM GTIN" se a peça não tiver código de barras de fábrica.
+                // Só salvamos se for um código numérico válido.
+                if (cProd != null && !cProd.trim().isEmpty()) {
+
+                    // Verifica se já existe para não duplicar
+                    Optional<Produto> existente = produtoRepository.findByCodigo(cProd);
+
+                    if (existente.isEmpty()) {
+                        Produto rascunho = new Produto();
+                        rascunho.setCodigo(cProd);
+                        rascunho.setNome(xProd);
+
+                        if (vUnComStr != null) {
+                            rascunho.setPrecoCusto(new BigDecimal(vUnComStr));
+                        }
+
+                        // Define como inativo e sem estoque até a Clarice revisar e salvar a foto
+                        rascunho.setEstoque(0);
+
+                        // Se você tiver um campo "ativo" ou "status", defina como inativo/rascunho aqui
+                        // rascunho.setAtivo(false);
+
+                        produtoRepository.save(rascunho);
+                    }
+                }
+            }
+        }
+    }
+
+
+    // Método auxiliar para buscar o texto dentro da tag com segurança
+    private String getTagValue(String tag, org.w3c.dom.Element element) {
+        NodeList nodeList = element.getElementsByTagName(tag);
+        if (nodeList != null && nodeList.getLength() > 0) {
+            Node node = nodeList.item(0);
+            if (node != null) {
+                return node.getTextContent();
+            }
+        }
+        return null;
+    }
+
     public Optional<ProdutoDTO> buscarPorCodigo(String codigo) {
         Optional<ProdutoDTO> produto = produtoRepository.findByCodigo(codigo)
                 .map(p -> mapper.map(p, ProdutoDTO.class));
         return produto;
+    }
+
+    public List<ProdutoDTO> listarRascunhos() {
+        List<ProdutoDTO> produtos = produtoRepository.findByRascunhoTrue().stream().map(p -> mapper.map(p,ProdutoDTO.class)).collect(Collectors.toList());
+        return produtos;
     }
 }
