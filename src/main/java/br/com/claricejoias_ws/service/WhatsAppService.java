@@ -27,7 +27,6 @@ import java.util.Map;
 import java.util.Optional;
 
 @Service
-@RequiredArgsConstructor
 public class WhatsAppService {
 
     private final RestTemplate restTemplate;
