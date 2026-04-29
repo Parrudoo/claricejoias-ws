@@ -36,14 +36,17 @@ public class SecurityConfigurations {
                         .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/visitantes/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/visitantes/**").permitAll()
+
                         .requestMatchers("api/arquivos/view/**").permitAll()
                         .requestMatchers("api/carrinho/**").permitAll()
+                        .requestMatchers("api/banners/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/clientes/me/**").permitAll()
 
                         // A SOLUÇÃO ESTÁ AQUI: Libera o POST (Cadastro) de Leads para os visitantes
-                        .requestMatchers(HttpMethod.POST, "/api/leads").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/leads/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/leads/**").permitAll()
                         // Opcional: Se você usa "OPTIONS" por conta do CORS do navegador, libere também:
                         .requestMatchers(HttpMethod.OPTIONS, "/api/leads").permitAll()
 

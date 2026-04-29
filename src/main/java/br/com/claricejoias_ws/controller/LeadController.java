@@ -46,7 +46,7 @@ public class LeadController {
         return leadService.deveMostrarBotaoGuia(visitorId);
     }
 
-    @PostMapping("/captura-guia")
+    @PostMapping("/registrar-lead")
     @Operation(summary = "Capturar Lead via Guia", description = "Salva nome e WhatsApp do visitante atrelando ao ID de navegação.")
     public ResponseEntity<Void> registrarLeadGuia(
             @Parameter(description = "ID único do visitante gerado pelo frontend (UUID)")

@@ -32,6 +32,13 @@ public class KeycloakUserService {
      */
     @Transactional // Garante que se o banco falhar, o processo reverta com segurança
     public void criarUsuarioCliente(String email, String senha, String nomeCompleto, String whatsapp, String visitorId) {
+        String whatsappLimpo = (whatsapp != null) ? whatsapp.replaceAll("[^0-9]", "") : null;
+        // =========================================================
+        // VALIDAÇÃO PRÉVIA: Evita criar no Keycloak se o Zap já existe
+        // =========================================================
+        if (clienteRepository.existsByWhatsapp(whatsappLimpo)) {
+            throw new RegraNegocioException("Este número de WhatsApp já está vinculado a outra conta.");
+        }
 
         UserRepresentation user = criarRepresentacaoBasica(email, nomeCompleto);
 

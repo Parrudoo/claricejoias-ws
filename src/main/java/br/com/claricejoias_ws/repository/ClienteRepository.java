@@ -23,5 +23,7 @@ public interface ClienteRepository extends JpaRepository<Cliente, Long> {
 
     Optional<Cliente> findByWhatsapp(String whatsapp);
 
+    boolean existsByWhatsapp(String whatsapp);
+
     Optional<Cliente> findByUsuarioId(String usuarioId);
 }
