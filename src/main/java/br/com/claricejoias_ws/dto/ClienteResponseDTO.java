@@ -18,7 +18,7 @@ public class ClienteResponseDTO {
 
     private UltimaCobrancaDTO ultimaCobranca;
 
-    // 👈 AQUI: A lista de vendas deste cliente
+    // AQUI: A lista de vendas deste cliente
     private List<VendaResponseDTO> vendas;
 
     @Data
@@ -27,7 +27,7 @@ public class ClienteResponseDTO {
         private String funcionario;
     }
 
-    // 👇 NOVAS ESTRUTURAS PARA DESCER O NÍVEL ATÉ A PARCELA
+    //  NOVAS ESTRUTURAS PARA DESCER O NÍVEL ATÉ A PARCELA
     @Data
     public static class VendaResponseDTO {
         private Long id;
@@ -37,7 +37,7 @@ public class ClienteResponseDTO {
         private BigDecimal valorEntrada;
         private BigDecimal valorDevido; // O que ainda falta pagar DESTA venda
 
-        // 👈 AQUI: As parcelas detalhadas desta venda específica
+        // AQUI: As parcelas detalhadas desta venda específica
         private List<ParcelaResponseDTO> parcelas;
     }
 

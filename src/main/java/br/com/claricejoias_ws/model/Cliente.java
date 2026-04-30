@@ -25,9 +25,6 @@ public class Cliente {
     private String nome;
 
     @Column(unique = true)
-    private String telefone;
-
-    @Column(unique = true)
     private String whatsapp;
 
     private String email;
@@ -56,7 +53,4 @@ public class Cliente {
         this.whatsapp = (whatsapp != null) ? whatsapp.replaceAll("[^0-9]", "") : null;
     }
 
-    public void setTelefone(String telefone) {
-        this.telefone = (telefone != null) ? telefone.replaceAll("[^0-9]", "") : null;
-    }
 }

@@ -1,12 +1,14 @@
 package br.com.claricejoias_ws.service;
 
 import br.com.claricejoias_ws.dto.CheckoutDTO;
+import br.com.claricejoias_ws.dto.VendaDTO;
 import br.com.claricejoias_ws.dto.VendaRequestDTO;
 import br.com.claricejoias_ws.model.*;
 import br.com.claricejoias_ws.repository.ClienteRepository;
 import br.com.claricejoias_ws.repository.ProdutoRepository;
 import br.com.claricejoias_ws.repository.VendaRepository;
 import lombok.RequiredArgsConstructor;
+import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,11 +30,13 @@ public class VendaService {
     private final ProdutoRepository produtoRepository;
     private final ClienteRepository clienteRepository;
     private final CarrinhoService carrinhoService;
+    private final ModelMapper modelMapper;
 
     @Transactional
-    public Venda registrarVenda(VendaRequestDTO dto) {
+    public Venda registrarVenda(VendaRequestDTO dto, String loginOperador) {
         Venda venda = new Venda();
         venda.setDataVenda(LocalDateTime.now());
+        venda.setLoginOperador(loginOperador);
 
         // Garante que o total não seja nulo
         BigDecimal totalVenda = dto.getTotal() != null ? dto.getTotal() : BigDecimal.ZERO;
@@ -123,17 +127,17 @@ public class VendaService {
 
         // Lógica do Cliente (Busca ou Cria novo)
         if (dto.getCliente() != null) {
-            Cliente cliente = clienteRepository.findByTelefone(dto.getCliente().getTelefone())
+            Cliente cliente = clienteRepository.findByWhatsapp(dto.getCliente().getTelefone())
                     .orElseGet(() -> {
                         Cliente novo = new Cliente();
                         novo.setNome(dto.getCliente().getNome());
-                        novo.setTelefone(dto.getCliente().getTelefone());
+                        novo.setWhatsapp(dto.getCliente().getTelefone());
                         novo.setUsuarioId(java.util.UUID.randomUUID().toString());
                         return clienteRepository.save(novo);
                     });
             venda.setCliente(cliente);
 
-            // 👇 IMPORTANTE: Se o cliente compra fiado, a gente precisa adicionar na dívida geral dele
+            // IMPORTANTE: Se o cliente compra fiado, a gente precisa adicionar na dívida geral dele
             if ("fiado".equalsIgnoreCase(metodo)) {
                 BigDecimal dividaAtual = cliente.getSaldoDevedor() != null ? cliente.getSaldoDevedor() : BigDecimal.ZERO;
                 cliente.setSaldoDevedor(dividaAtual.add(venda.getValorDevido()));
@@ -206,7 +210,8 @@ public class VendaService {
     }
 
 
-    public List<Venda> listarVendas() {
-        return vendaRepository.findAll();
+    public List<VendaDTO> listarVendas() {
+        List<VendaDTO> vendas = vendaRepository.findAll().stream().map(v->modelMapper.map(v, VendaDTO.class)).toList();
+        return vendas;
     }
 }

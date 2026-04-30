@@ -40,7 +40,7 @@ public class KeycloakUserService {
             throw new RegraNegocioException("Este número de WhatsApp já está vinculado a outra conta.");
         }
 
-        UserRepresentation user = criarRepresentacaoBasica(email, nomeCompleto);
+        UserRepresentation user = criarRepresentacaoBasica(email, email);
 
         // 1. Cria no Keycloak
         Response response = keycloak.realm(REALM_NAME).users().create(user);
@@ -53,7 +53,6 @@ public class KeycloakUserService {
         novoCliente.setUsuarioId(userId); // Esse é o vínculo oficial com o Keycloak!
         novoCliente.setEmail(email);
         novoCliente.setWhatsapp(whatsapp);
-        novoCliente.setTelefone(whatsapp);
         novoCliente.setNome(nomeCompleto);
 
         // =========================================================
@@ -65,7 +64,7 @@ public class KeycloakUserService {
             // Tenta buscar o Lead pelo rastro do navegador
             leadDoMarketing = leadRepository.findByVisitorId(visitorId).orElse(null);
 
-            // 🚨 A TRAVA DO COMPUTADOR PÚBLICO 🚨
+            // A TRAVA DO COMPUTADOR PÚBLICO
             // Se o lead encontrado já possui um usuarioId, significa que o primeiro usuário
             // já usou esse PC e criou a conta dele. Como um SEGUNDO usuário está criando
             // uma conta nova agora, nós anulamos a busca para forçar a criação de um Lead virgem.
@@ -84,7 +83,7 @@ public class KeycloakUserService {
 
             // Se ele deixou o WhatsApp lá atrás na captura, a gente garante no perfil do Cliente!
             if (leadDoMarketing.getWhatsapp() != null) {
-                novoCliente.setTelefone(leadDoMarketing.getWhatsapp());
+                novoCliente.setWhatsapp(leadDoMarketing.getWhatsapp());
             }
         } else {
             // CENÁRIO B: PC Público (Lead sobrescrito) ou Cadastro Direto. Criamos um Lead novinho em folha!
@@ -108,7 +107,7 @@ public class KeycloakUserService {
         // =========================================================
         clienteRepository.save(novoCliente);
 
-        System.out.println("✅ Cliente " + nomeCompleto + " inserido no Keycloak, Cliente e na Esteira de Marketing (Lead)!");
+        System.out.println("Cliente " + nomeCompleto + " inserido no Keycloak, Cliente e na Esteira de Marketing (Lead)!");
     }
 
     /**
@@ -146,13 +145,19 @@ public class KeycloakUserService {
         if (response.getStatus() == 201) {
             String userId = response.getLocation().getPath().replaceAll(".*/([^/]+)$", "$1");
 
-            if (senha != null) {
+            // Valida se a senha não é nula E não está em branco/vazia
+            if (senha != null && !senha.trim().isEmpty()) {
                 definirSenha(userId, senha);
             }
-            atribuirRole(userId, roleName);
+
+            // Boa prática: validar a role também para evitar erros no Keycloak
+            if (roleName != null && !roleName.trim().isEmpty()) {
+                atribuirRole(userId, roleName);
+            }
 
             // Retorna o ID gerado para ser usado na criação do Cliente local
             return userId;
+
         } else if (response.getStatus() == 409) {
             throw new RegraNegocioException("Este e-mail já está cadastrado.");
         } else {

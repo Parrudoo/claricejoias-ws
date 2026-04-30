@@ -22,6 +22,8 @@ public class Venda {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    private String loginOperador;
+
     @Column(name = "data_venda", nullable = false)
     private LocalDateTime dataVenda;
 

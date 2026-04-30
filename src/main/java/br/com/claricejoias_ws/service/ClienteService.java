@@ -5,6 +5,11 @@ import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.*;
 import br.com.claricejoias_ws.repository.*;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.StaleObjectStateException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,6 +52,15 @@ public class ClienteService {
 
 
     @Transactional
+    @Retryable(
+            retryFor = {
+                    DataIntegrityViolationException.class,
+                    ObjectOptimisticLockingFailureException.class,
+                    StaleObjectStateException.class
+            },
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 150)
+    )
     public Cliente sincronizarClienteComKeycloak(Jwt jwt, String visitorId) {
         String usuarioId = jwt.getSubject(); // Pega o ID do Keycloak
         String email = jwt.getClaimAsString("email");
@@ -63,7 +77,7 @@ public class ClienteService {
 
             // =========================================================
             // 3. A MÁGICA DO FUNIL DE MARKETING (LEAD)
-            // =========================================================
+            //            // =========================================================
             Lead leadDoMarketing = null;
 
             // Tenta achar se ele já era um Lead capturado (pelo visitorId)
@@ -91,7 +105,7 @@ public class ClienteService {
 
                 // Se ele deixou o WhatsApp lá atrás na captura, nós copiamos para o perfil do Cliente oficial!
                 if (leadDoMarketing.getWhatsapp() != null) {
-                    novoCliente.setTelefone(leadDoMarketing.getWhatsapp());
+                    novoCliente.setWhatsapp(leadDoMarketing.getWhatsapp());
                 }
 
                 // Se o Keycloak não enviou o nome, mas ele preencheu no Guia, a gente aproveita
@@ -221,7 +235,7 @@ public class ClienteService {
         ClienteResponseDTO dto = new ClienteResponseDTO();
         dto.setId(cliente.getId());
         dto.setNome(cliente.getNome());
-        dto.setTelefone(cliente.getTelefone());
+        dto.setTelefone(cliente.getWhatsapp());
 
         // 1. Soma o valor devido de todas as vendas (Tudo limpo e direto)
         BigDecimal totalVendasFiado = BigDecimal.ZERO;

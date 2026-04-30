@@ -184,8 +184,8 @@ public class WhatsAppService {
         FilaCobranca cobranca = cobrancaOpt.get();
         Cliente cliente = cobranca.getCliente();
 
-        String numeroCorreto = cliente.getTelefone().replaceAll("\\D", "");
-        if (numeroCorreto != null && !numeroCorreto.startsWith("55")) {
+        String numeroCorreto = cliente.getWhatsapp().replaceAll("\\D", "");
+        if (!numeroCorreto.startsWith("55")) {
             numeroCorreto = "55" + numeroCorreto;
         }
 

@@ -1,8 +1,10 @@
 package br.com.claricejoias_ws.controller;
 
 import br.com.claricejoias_ws.dto.CheckoutDTO;
+import br.com.claricejoias_ws.dto.VendaDTO;
 import br.com.claricejoias_ws.dto.VendaRequestDTO;
 import br.com.claricejoias_ws.model.Venda;
+import br.com.claricejoias_ws.service.AutenticacaoService;
 import br.com.claricejoias_ws.service.VendaService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -22,13 +24,14 @@ import java.util.List;
 public class VendaController {
 
     private final VendaService vendaService;
+    private final AutenticacaoService autenticacaoService;
 
     @Operation(summary = "Registrar nova venda (PDV)", description = "Utilizado pelo operador para registrar uma venda manual realizada fisicamente.")
     @PostMapping
     public ResponseEntity<?> registrarVenda(@RequestBody VendaRequestDTO dto) {
         try {
             // O seu Service deve processar os itens, baixar o estoque e salvar o financeiro
-            Venda vendaSalva = vendaService.registrarVenda(dto);
+            Venda vendaSalva = vendaService.registrarVenda(dto,autenticacaoService.getUsername());
             return ResponseEntity.status(HttpStatus.CREATED).body(vendaSalva);
         } catch (Exception e) {
             e.printStackTrace();
@@ -59,7 +62,7 @@ public class VendaController {
 
     @Operation(summary = "Listar vendas", description = "Retorna o histórico de todas as vendas realizadas.")
     @GetMapping
-    public ResponseEntity<List<Venda>> listarVendas() {
+    public ResponseEntity<List<VendaDTO>> listarVendas() {
         return ResponseEntity.ok(vendaService.listarVendas());
     }
 }

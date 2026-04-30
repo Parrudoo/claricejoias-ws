@@ -11,8 +11,6 @@ import java.util.Optional;
 @Repository
 public interface ClienteRepository extends JpaRepository<Cliente, Long> {
 
-    // Usado na hora da venda para não duplicar clientes
-    Optional<Cliente> findByTelefone(String telefone);
 
     // Busca apenas os clientes que têm alguma venda com valor devido maior que zero
     @Query("SELECT DISTINCT c FROM Cliente c " +
