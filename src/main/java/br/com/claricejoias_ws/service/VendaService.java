@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 
@@ -212,11 +213,16 @@ public class VendaService {
     }
 
 
-    public Page<VendaDTO> listarVendas(Pageable pageable) {
-        // Busca as vendas já paginadas do banco de dados
-        Page<Venda> vendasPage = vendaRepository.findAll(pageable);
+    public Page<VendaDTO> listarVendas(String loginOperador, String metodoPagamento, LocalDate dataInicio, LocalDate dataFim, Pageable pageable) {
 
-        // O objeto Page já tem um método map nativo, simplificando a conversão!
+        // Converte a data inicial para o começo do dia (00:00:00)
+        LocalDateTime inicioDia = (dataInicio != null) ? dataInicio.atStartOfDay() : null;
+
+        // Converte a data final para o fim do dia (23:59:59)
+        LocalDateTime fimDia = (dataFim != null) ? dataFim.atTime(LocalTime.MAX) : null;
+
+        Page<Venda> vendasPage = vendaRepository.findComFiltros(loginOperador, metodoPagamento, inicioDia, fimDia, pageable);
+
         return vendasPage.map(v -> modelMapper.map(v, VendaDTO.class));
     }
 }

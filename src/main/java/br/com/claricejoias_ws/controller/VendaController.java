@@ -13,12 +13,15 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
@@ -35,7 +38,7 @@ public class VendaController {
     public ResponseEntity<?> registrarVenda(@RequestBody VendaRequestDTO dto) {
         try {
             // O seu Service deve processar os itens, baixar o estoque e salvar o financeiro
-            Venda vendaSalva = vendaService.registrarVenda(dto,autenticacaoService.getUsername());
+            Venda vendaSalva = vendaService.registrarVenda(dto, autenticacaoService.getUsername());
             return ResponseEntity.status(HttpStatus.CREATED).body(vendaSalva);
         } catch (Exception e) {
             e.printStackTrace();
@@ -63,10 +66,15 @@ public class VendaController {
     }
 
 
-
-    @Operation(summary = "Listar vendas", description = "Retorna o histórico de todas as vendas realizadas.")
+    @Operation(summary = "Listar vendas", description = "Retorna o histórico de vendas realizadas, com filtros opcionais.")
     @GetMapping
-    public ResponseEntity<Page<VendaDTO>> listarVendas(@PageableDefault(page = 0, size = 20, sort = "id", direction = Sort.Direction.DESC) Pageable pageable) {
-        return ResponseEntity.ok(vendaService.listarVendas(pageable));
+    public ResponseEntity<Page<VendaDTO>> listarVendas(
+            @RequestParam(required = false) String loginOperador,
+            @RequestParam(required = false) String metodoPagamento,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim,
+            @PageableDefault(page = 0, size = 20, sort = "id", direction = Sort.Direction.DESC) Pageable pageable) {
+
+        return ResponseEntity.ok(vendaService.listarVendas(loginOperador, metodoPagamento, dataInicio, dataFim, pageable));
     }
 }
