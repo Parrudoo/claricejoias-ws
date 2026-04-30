@@ -9,6 +9,8 @@ import br.com.claricejoias_ws.repository.ProdutoRepository;
 import br.com.claricejoias_ws.repository.VendaRepository;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -210,8 +212,11 @@ public class VendaService {
     }
 
 
-    public List<VendaDTO> listarVendas() {
-        List<VendaDTO> vendas = vendaRepository.findAll().stream().map(v->modelMapper.map(v, VendaDTO.class)).toList();
-        return vendas;
+    public Page<VendaDTO> listarVendas(Pageable pageable) {
+        // Busca as vendas já paginadas do banco de dados
+        Page<Venda> vendasPage = vendaRepository.findAll(pageable);
+
+        // O objeto Page já tem um método map nativo, simplificando a conversão!
+        return vendasPage.map(v -> modelMapper.map(v, VendaDTO.class));
     }
 }
