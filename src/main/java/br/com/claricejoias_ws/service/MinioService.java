@@ -36,18 +36,21 @@ public class MinioService {
     public String upload(MultipartFile file) throws Exception {
         ensureBucketExists();
 
-        String extension = "";
-        String originalFilename = file.getOriginalFilename();
-        if (originalFilename != null && originalFilename.contains(".")) {
-            extension = originalFilename.substring(originalFilename.lastIndexOf("."));
+        // Pega o nome original do arquivo que está sendo enviado
+        String objectName = file.getOriginalFilename();
+
+        // Validação de segurança básica para garantir que o nome não é nulo
+        if (objectName == null || objectName.trim().isEmpty()) {
+            throw new IllegalArgumentException("O nome do arquivo original não pode ser nulo ou vazio.");
         }
 
-        String objectName = UUID.randomUUID() + extension;
+        // Opcional, mas recomendado: Limpa o caminho para evitar vulnerabilidades de Path Traversal
+        // objectName = org.springframework.util.StringUtils.cleanPath(objectName);
 
         minioClient.putObject(
                 PutObjectArgs.builder()
                         .bucket(bucketName)
-                        .object(objectName)
+                        .object(objectName) // Usa o nome original aqui
                         .stream(file.getInputStream(), file.getSize(), -1)
                         .contentType(file.getContentType())
                         .build()

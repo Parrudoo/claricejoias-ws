@@ -136,7 +136,20 @@ public class WhatsAppService {
         Lead lead = disparoAtual.getLead();
 
         String numeroCorreto = lead.getWhatsapp();
-        if (numeroCorreto != null && !numeroCorreto.startsWith("55")) {
+
+        // NOVA VERIFICAÇÃO: Interrompe o processo se o número for nulo ou vazio
+        if (numeroCorreto == null || numeroCorreto.trim().isEmpty()) {
+            System.err.println("Fila FALHOU: O Lead (ID: " + lead.getId() + ") não possui número de WhatsApp válido.");
+
+            disparoAtual.setStatus(StatusDisparo.ERRO);
+            disparoAtual.setMensagemErro("Número de WhatsApp é nulo ou vazio.");
+            filaRepository.save(disparoAtual);
+
+            return; // Para a execução aqui, não tenta chamar a API
+        }
+
+        // Se chegou aqui, o número existe. Adiciona o 55 se precisar.
+        if (!numeroCorreto.startsWith("55")) {
             numeroCorreto = "55" + numeroCorreto;
         }
 

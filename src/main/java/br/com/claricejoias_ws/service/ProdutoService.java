@@ -19,6 +19,7 @@ import org.w3c.dom.Element;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -195,8 +196,28 @@ public class ProdutoService {
                         rascunho.setCodigo(codigoExtraido); // Ex: "P497 P"
                         rascunho.setNome(descricaoExtraida); // Ex: "Pulseira Folheado a Prata"
 
-                        if (vUnComStr != null) {
-                            rascunho.setPrecoCusto(new BigDecimal(vUnComStr));
+                        // 👇 NOVA LÓGICA DE PRECIFICAÇÃO INTEGRADA AQUI
+                        if (vUnComStr != null && !vUnComStr.trim().isEmpty()) {
+                            BigDecimal custo = new BigDecimal(vUnComStr);
+                            rascunho.setPrecoCusto(custo);
+
+                            BigDecimal precoVenda;
+
+                            // Se o custo for menor que R$ 20,00, multiplica por 3
+                            if (custo.compareTo(new BigDecimal("20.00")) < 0) {
+                                precoVenda = custo.multiply(new BigDecimal("3.0"));
+                            }
+                            // Se o custo for entre R$ 20,00 e R$ 100,00, multiplica por 2.5
+                            else if (custo.compareTo(new BigDecimal("100.00")) <= 0) {
+                                precoVenda = custo.multiply(new BigDecimal("2.5"));
+                            }
+                            // Se for maior que R$ 100,00, multiplica por 2
+                            else {
+                                precoVenda = custo.multiply(new BigDecimal("2.0"));
+                            }
+
+                            // Define o preço de venda arredondando para 2 casas decimais
+                            rascunho.setPreco(precoVenda.setScale(2, RoundingMode.HALF_UP));
                         }
 
                         // Define como inativo e sem estoque até a Clarice revisar e salvar a foto
@@ -256,16 +277,24 @@ public class ProdutoService {
                 Produto produto = produtoOpt.get();
 
                 try {
-                    // 3. Faz o upload para o Minio
-                    // Retorna o nome gerado (ex: 550e8400-e29b-41d4-a716-446655440000.jpg)
+                    // 3. Faz o upload para o Minio (Se já existir com o mesmo nome, o MinIO SOBRESCREVE a foto velha)
                     String objectNameSalvo = minioService.upload(imagem);
 
-                    // 4. Adiciona o nome do objeto salvo no Minio à lista do produto e salva
-                    produto.adicionarImagem(objectNameSalvo);
-                    produtoRepository.save(produto);
+                    // 4. Verifica se a imagem JÁ ESTÁ na lista do banco de dados
+                    boolean imagemJaExisteNoBanco = produto.getImagens() != null && produto.getImagens().contains(objectNameSalvo);
 
-                    log.info("Sucesso: Imagem '{}' atrelada ao produto '{}' salva como '{}' no Minio.",
-                            nomeOriginal, codigoProduto, objectNameSalvo);
+                    if (!imagemJaExisteNoBanco) {
+                        // Se NÃO existe no banco, adiciona na lista e salva
+                        produto.adicionarImagem(objectNameSalvo);
+                        produtoRepository.save(produto);
+
+                        log.info("Sucesso: Nova imagem '{}' adicionada ao produto '{}' e salva no Minio.",
+                                objectNameSalvo, codigoProduto);
+                    } else {
+                        // Se JÁ existe no banco, não salva de novo para não duplicar, apenas avisa que a foto foi atualizada
+                        log.info("Atualização: A foto '{}' do produto '{}' foi substituída no Minio com sucesso.",
+                                objectNameSalvo, codigoProduto);
+                    }
 
                 } catch (Exception e) {
                     // Usamos um try-catch dentro do for para que, se der erro em 1 imagem,
@@ -292,10 +321,4 @@ public class ProdutoService {
         return codigo.trim().toUpperCase();
     }
 
-    // Método fictício para representar o salvamento real do arquivo
-    private String salvarArquivoFisicamente(MultipartFile arquivo, String nomeArquivo) {
-        // Aqui vai a sua lógica de salvar o arquivo no C:\imagens ou num Storage nas nuvens
-        // E retorna o caminho de onde ele ficou salvo
-        return "/uploads/produtos/" + nomeArquivo;
-    }
 }

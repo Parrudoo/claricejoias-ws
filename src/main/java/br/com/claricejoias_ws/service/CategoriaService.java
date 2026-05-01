@@ -26,8 +26,8 @@ public class CategoriaService {
 
     public List<CategoriaDTO> listarTodas() {
 
-        List<Categoria> categorias = repository.findAll();
-        return categorias.stream()
+
+        return repository.findAll().stream()
                 .map(categoria -> modelMapper.map(categoria, CategoriaDTO.class))
                 .collect(Collectors.toList());
     }
