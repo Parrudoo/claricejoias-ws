@@ -159,22 +159,41 @@ public class ProdutoService {
             if (node.getNodeType() == Node.ELEMENT_NODE) {
                 Element element = (Element) node;
 
-                // Extrai as tags específicas dentro de <prod>
-                String cProd = getTagValue("cProd", element);
-                String xProd = getTagValue("xProd", element);
+                // Extrai as tags brutas
+                String xProdRaw = getTagValue("xProd", element);
                 String vUnComStr = getTagValue("vUnCom", element);
 
-                // O fornecedor pode mandar "SEM GTIN" se a peça não tiver código de barras de fábrica.
-                // Só salvamos se for um código numérico válido.
-                if (cProd != null && !cProd.trim().isEmpty()) {
+                String codigoExtraido = "";
+                String descricaoExtraida = "";
 
-                    // Verifica se já existe para não duplicar
-                    Optional<Produto> existente = produtoRepository.findByCodigo(cProd);
+                // Lógica para separar o código da descrição baseada no hífen
+                if (xProdRaw != null && !xProdRaw.trim().isEmpty()) {
+                    int indexHifen = xProdRaw.indexOf("-");
+
+                    if (indexHifen != -1) {
+                        // Pega tudo do começo até o hífen e remove os espaços
+                        codigoExtraido = xProdRaw.substring(0, indexHifen).trim();
+
+                        // Pega tudo depois do hífen até o final e remove os espaços
+                        descricaoExtraida = xProdRaw.substring(indexHifen + 1).trim();
+                    } else {
+                        // Fallback: se por acaso vier algum produto sem o hífen,
+                        // tenta pegar da tag <cProd> normal e usa o xProd inteiro como nome
+                        codigoExtraido = getTagValue("cProd", element);
+                        descricaoExtraida = xProdRaw.trim();
+                    }
+                }
+
+                // Só salvamos se o código extraído for válido
+                if (codigoExtraido != null && !codigoExtraido.isEmpty()) {
+
+                    // Verifica se já existe para não duplicar usando o novo código
+                    Optional<Produto> existente = produtoRepository.findByCodigo(codigoExtraido);
 
                     if (existente.isEmpty()) {
                         Produto rascunho = new Produto();
-                        rascunho.setCodigo(cProd);
-                        rascunho.setNome(xProd);
+                        rascunho.setCodigo(codigoExtraido); // Ex: "P497 P"
+                        rascunho.setNome(descricaoExtraida); // Ex: "Pulseira Folheado a Prata"
 
                         if (vUnComStr != null) {
                             rascunho.setPrecoCusto(new BigDecimal(vUnComStr));
@@ -215,5 +234,68 @@ public class ProdutoService {
     public List<ProdutoDTO> listarRascunhos() {
         List<ProdutoDTO> produtos = produtoRepository.findByRascunhoTrue().stream().map(p -> mapper.map(p,ProdutoDTO.class)).collect(Collectors.toList());
         return produtos;
+    }
+
+
+    public void processarImagensEmMassa(List<MultipartFile> imagensEnviadas) {
+
+        for (MultipartFile imagem : imagensEnviadas) {
+            String nomeOriginal = imagem.getOriginalFilename();
+
+            if (nomeOriginal == null || nomeOriginal.isEmpty()) {
+                continue; // Pula se o arquivo for inválido
+            }
+
+            // 1. Extrai o código base (Ex: "BS5455") baseado no nome do arquivo original
+            String codigoProduto = extrairCodigoDoArquivo(nomeOriginal);
+
+            // 2. Busca o produto no banco
+            Optional<Produto> produtoOpt = produtoRepository.findByCodigoIgnoreCase(codigoProduto);
+
+            if (produtoOpt.isPresent()) {
+                Produto produto = produtoOpt.get();
+
+                try {
+                    // 3. Faz o upload para o Minio
+                    // Retorna o nome gerado (ex: 550e8400-e29b-41d4-a716-446655440000.jpg)
+                    String objectNameSalvo = minioService.upload(imagem);
+
+                    // 4. Adiciona o nome do objeto salvo no Minio à lista do produto e salva
+                    produto.adicionarImagem(objectNameSalvo);
+                    produtoRepository.save(produto);
+
+                    log.info("Sucesso: Imagem '{}' atrelada ao produto '{}' salva como '{}' no Minio.",
+                            nomeOriginal, codigoProduto, objectNameSalvo);
+
+                } catch (Exception e) {
+                    // Usamos um try-catch dentro do for para que, se der erro em 1 imagem,
+                    // o sistema não trave e continue enviando as outras.
+                    log.error("Erro ao enviar a imagem '{}' para o Minio: {}", nomeOriginal, e.getMessage());
+                }
+
+            } else {
+                log.warn("Aviso: Produto '{}' não encontrado para a imagem '{}'", codigoProduto, nomeOriginal);
+            }
+        }
+    }
+
+    private String extrairCodigoDoArquivo(String nomeArquivo) {
+        // 1. Remove a extensão (ex: .jpg, .png, .jpeg)
+        int indexPonto = nomeArquivo.lastIndexOf('.');
+        String nomeSemExtensao = (indexPonto != -1) ? nomeArquivo.substring(0, indexPonto) : nomeArquivo;
+
+        // 2. Substitui os underlines "_" por espaços " "
+        // Exemplo: "P497_P" se transforma em "P497 P"
+        String codigo = nomeSemExtensao.replace('_', ' ');
+
+        // 3. Retorna tudo em maiúsculo e garante que não fiquem espaços sobrando nas pontas
+        return codigo.trim().toUpperCase();
+    }
+
+    // Método fictício para representar o salvamento real do arquivo
+    private String salvarArquivoFisicamente(MultipartFile arquivo, String nomeArquivo) {
+        // Aqui vai a sua lógica de salvar o arquivo no C:\imagens ou num Storage nas nuvens
+        // E retorna o caminho de onde ele ficou salvo
+        return "/uploads/produtos/" + nomeArquivo;
     }
 }

@@ -36,4 +36,8 @@ public class Produto {
     @ManyToOne
     @JoinColumn(name = "subcategoria_id")
     private Subcategoria subcategoria;
+
+    public void adicionarImagem(String caminho) {
+        this.imagens.add(caminho);
+    }
 }

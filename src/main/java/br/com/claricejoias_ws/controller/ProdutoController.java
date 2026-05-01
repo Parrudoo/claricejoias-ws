@@ -40,7 +40,6 @@ public class ProdutoController {
         return ResponseEntity.ok(produtoService.listarRascunhos());
     }
 
-
     @PostMapping("/importar-xml")
     public ResponseEntity<Void> importarXmlNfe(@RequestParam("file") MultipartFile file) {
         try {
@@ -52,11 +51,30 @@ public class ProdutoController {
         }
     }
 
-    // CORREÇÃO AQUI: Adicionado o prefixo /codigo/ na rota para diferenciar do buscarPorId
+    // --- NOVO ENDPOINT: UPLOAD EM MASSA DE IMAGENS ---
+    @Operation(summary = "Vincular imagens em lote aos produtos via nome do arquivo")
+    @PostMapping(value = "/imagens/upload-massa", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Void> uploadImagensEmMassa(@RequestParam("imagens") List<MultipartFile> imagens) {
+        try {
+            // Verifica se a lista não está vazia para evitar processamento desnecessário
+            if (imagens == null || imagens.isEmpty()) {
+                return ResponseEntity.badRequest().build();
+            }
+
+            // Chama o método que criamos anteriormente (certifique-se de que ele esteja no ProdutoService)
+            produtoService.processarImagensEmMassa(imagens);
+
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
     @Operation(summary = "Buscar produto pelo Código de Barras/SKU")
     @GetMapping("/codigo/{codigo}")
     public ResponseEntity<ProdutoDTO> buscarPorCodigo(@PathVariable String codigo) {
-        return produtoService.buscarPorCodigo(codigo) // Lembre-se de implementar isso no ProdutoService
+        return produtoService.buscarPorCodigo(codigo)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -89,8 +107,6 @@ public class ProdutoController {
             return ResponseEntity.notFound().build();
         }
     }
-
-
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deletar(@PathVariable Long id) {
