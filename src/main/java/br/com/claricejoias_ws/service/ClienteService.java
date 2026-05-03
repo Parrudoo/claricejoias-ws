@@ -1,6 +1,7 @@
 package br.com.claricejoias_ws.service;
 
 import br.com.claricejoias_ws.dto.*;
+import br.com.claricejoias_ws.enums.StatusParcela;
 import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.*;
 import br.com.claricejoias_ws.repository.*;
@@ -45,7 +46,7 @@ public class ClienteService {
 
     @Transactional(readOnly = true)
     public List<ClienteResponseDTO> listarPendentes() {
-        return clienteRepository.findClientesInadimplentes().stream()
+        return clienteRepository.findClientesInadimplentes(StatusParcela.PENDENTE).stream()
                 .map(this::converterParaDTO)
                 .collect(Collectors.toList());
     }
@@ -132,7 +133,7 @@ public class ClienteService {
         BigDecimal totalDevido = cliente.getVendas().stream()
                 .flatMap(venda -> venda.getParcelasDetalhadas().stream())
                 // Filtra rigorosamente pelas parcelas que têm o status PENDENTE
-                .filter(parcela -> "PENDENTE".equalsIgnoreCase(parcela.getStatus()))
+                .filter(parcela -> StatusParcela.ATRASADA.equals(parcela.getStatus()))
                 // Puxa o BigDecimal nativo, previnindo valores nulos com BigDecimal.ZERO
                 .map(parcela -> parcela.getValor() != null ? parcela.getValor() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -356,7 +357,7 @@ public class ClienteService {
 
             BigDecimal valorParaParcelas = abateVenda;
             List<Parcela> parcelasPendentes = venda.getParcelasDetalhadas().stream()
-                    .filter(p -> "PENDENTE".equalsIgnoreCase(p.getStatus()))
+                    .filter(p -> StatusParcela.PENDENTE.equals(p.getStatus()))
                     .sorted(Comparator.comparing(Parcela::getNumeroParcela))
                     .collect(Collectors.toList());
 
@@ -366,7 +367,7 @@ public class ClienteService {
                 BigDecimal valorParcela = parcela.getValor();
 
                 if (valorParaParcelas.compareTo(valorParcela) >= 0) {
-                    parcela.setStatus("PAGA");
+                    parcela.setStatus(StatusParcela.PAGA);
                     parcela.setDataPagamento(dto.dataPagamento() != null ? dto.dataPagamento() : LocalDate.now());
                     valorParaParcelas = valorParaParcelas.subtract(valorParcela);
                 } else {
@@ -400,12 +401,12 @@ public class ClienteService {
         Parcela parcela = parcelaRepository.findById(parcelaId)
                 .orElseThrow(() -> new RuntimeException("Parcela não encontrada"));
 
-        if ("PAGA".equalsIgnoreCase(parcela.getStatus())) {
+        if (StatusParcela.PAGA.equals(parcela.getStatus())) {
             throw new RuntimeException("Esta parcela já está paga.");
         }
 
         // 1. Marca a parcela como PAGA
-        parcela.setStatus("PAGA");
+        parcela.setStatus(StatusParcela.PAGA);
         parcela.setDataPagamento(dto.dataPagamento() != null ? dto.dataPagamento() : LocalDate.now());
         parcelaRepository.save(parcela);
 

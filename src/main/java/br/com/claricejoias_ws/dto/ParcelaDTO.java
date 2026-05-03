@@ -1,5 +1,6 @@
 package br.com.claricejoias_ws.dto;
 
+import br.com.claricejoias_ws.enums.StatusParcela;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,5 +19,5 @@ public class ParcelaDTO {
     private BigDecimal valor;
     private LocalDate dataVencimento;
     private LocalDate dataPagamento;
-    private String status; // PENDENTE, PAGA, CANCELADA
+    private StatusParcela status; // PENDENTE, PAGA, CANCELADA
 }

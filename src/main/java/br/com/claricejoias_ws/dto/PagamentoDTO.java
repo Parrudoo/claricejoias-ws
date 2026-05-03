@@ -1,12 +1,14 @@
 package br.com.claricejoias_ws.dto;
 
-import lombok.Builder;
-import lombok.Data;
+import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-@Data
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 @Builder
 public class PagamentoDTO {
     private LocalDateTime data;

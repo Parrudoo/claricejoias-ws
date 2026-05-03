@@ -3,6 +3,7 @@ package br.com.claricejoias_ws.service;
 import br.com.claricejoias_ws.dto.CheckoutDTO;
 import br.com.claricejoias_ws.dto.VendaDTO;
 import br.com.claricejoias_ws.dto.VendaRequestDTO;
+import br.com.claricejoias_ws.enums.StatusParcela;
 import br.com.claricejoias_ws.model.*;
 import br.com.claricejoias_ws.repository.ClienteRepository;
 import br.com.claricejoias_ws.repository.ProdutoRepository;
@@ -90,10 +91,10 @@ public class VendaService {
                 parcela.setVenda(venda);
                 parcela.setNumeroParcela(i);
                 parcela.setValor(valorPorParcela);
-                parcela.setStatus("PENDENTE");
+                parcela.setStatus(StatusParcela.PENDENTE);
 
-                // Joga o vencimento para o último dia do próximo mês
-                LocalDate vencimento = dataAtual.plusMonths(i).with(TemporalAdjusters.lastDayOfMonth());
+                // Vencimento exato para 1 mês depois, 2 meses depois, etc., mantendo o dia da compra
+                LocalDate vencimento = dataAtual.plusMonths(i);
                 parcela.setDataVencimento(vencimento);
 
                 listaParcelas.add(parcela);

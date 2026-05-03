@@ -1,5 +1,6 @@
 package br.com.claricejoias_ws.model;
 
+import br.com.claricejoias_ws.enums.StatusParcela;
 import jakarta.persistence.*;
 import lombok.Data;
 
@@ -19,11 +20,12 @@ public class Parcela {
     @JoinColumn(name = "venda_id")
     private Venda venda;
 
-    private Integer numeroParcela; // 1, 2, 3...
+    private Integer numeroParcela;
     private BigDecimal valor;
 
     private LocalDate dataVencimento;
     private LocalDate dataPagamento; // Fica null até o cliente pagar
 
-    private String status; // PENDENTE, PAGA, CANCELADA
+    @Enumerated(EnumType.STRING)
+    private StatusParcela status;
 }

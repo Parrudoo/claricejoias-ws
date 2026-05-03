@@ -1,5 +1,6 @@
 package br.com.claricejoias_ws.dto;
 
+import br.com.claricejoias_ws.enums.StatusParcela;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -48,6 +49,6 @@ public class ClienteResponseDTO {
         private BigDecimal valor;
         private LocalDate dataVencimento;
         private LocalDate dataPagamento;
-        private String status; // PENDENTE, PAGA
+        private StatusParcela status; // PENDENTE, PAGA
     }
 }
