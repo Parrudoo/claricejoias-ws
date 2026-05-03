@@ -63,40 +63,53 @@ public class ClienteService {
             backoff = @Backoff(delay = 150)
     )
     public Cliente sincronizarClienteComKeycloak(Jwt jwt, String visitorId) {
-        String usuarioId = jwt.getSubject(); // Pega o ID do Keycloak
-        String email = jwt.getClaimAsString("email");
-        String nome = jwt.getClaimAsString("name"); // Ou "preferred_username" (depende da conf. do Keycloak)
+        String usuarioId = jwt.getSubject();
 
-        // 1. Verifica se o cliente já existe no banco. Se sim, apenas o retorna.
+        // 1. Verifica se o cliente já existe. Se sim, retorna direto.
+        // (A verificação de Role aqui é opcional, pois se ele já existe, já foi validado antes)
         return clienteRepository.findByUsuarioId(usuarioId).orElseGet(() -> {
 
-            // 2. Não existe! É o primeiro login após criar a conta.
+            // =========================================================
+            // 2. VALIDAÇÃO DE ROLE: SÓ PROSSEGUE SE FOR "cliente"
+            // =========================================================
+            boolean ehCliente = false;
+            Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
+
+            if (realmAccess != null && realmAccess.containsKey("roles")) {
+                List<String> roles = (List<String>) realmAccess.get("roles");
+                ehCliente = roles.contains("cliente"); // Nome da role no Keycloak
+            }
+
+            if (!ehCliente) {
+                // Se não for cliente (ex: for um admin ou funcionário),
+                // retornamos null ou lançamos uma exceção para não criar sujeira no banco de Clientes/Leads
+                System.out.println("Usuário " + usuarioId + " logou, mas não possui a Role 'cliente'. Ignorando sincronização.");
+                return null;
+            }
+
+            // Se chegou aqui, é um usuário com a role "cliente" e não existe no banco.
+            // Prosseguimos com a criação:
+            String email = jwt.getClaimAsString("email");
+            String nome = jwt.getClaimAsString("name");
+
             Cliente novoCliente = new Cliente();
             novoCliente.setUsuarioId(usuarioId);
             novoCliente.setEmail(email);
             novoCliente.setNome(nome);
 
-            // =========================================================
-            // 3. A MÁGICA DO FUNIL DE MARKETING (LEAD)
-            //            // =========================================================
             Lead leadDoMarketing = null;
 
-            // Tenta achar se ele já era um Lead capturado (pelo visitorId)
             if (visitorId != null && !visitorId.isEmpty()) {
                 leadDoMarketing = leadRepository.findByVisitorId(visitorId).orElse(null);
             }
 
             if (leadDoMarketing == null) {
-                // CENÁRIO A: O cara ignorou a isca digital e logou direto.
-                // Criamos um Lead silenciosamente para ele entrar na campanha de WhatsApp!
                 leadDoMarketing = new Lead();
                 leadDoMarketing.setVisitorId(visitorId != null ? visitorId : UUID.randomUUID().toString());
                 leadDoMarketing.setUsuarioId(usuarioId);
                 leadDoMarketing.setNome(nome);
                 leadDoMarketing.setEmail(email);
             } else {
-                // CENÁRIO B: Ele já era Lead (baixou o E-book/Guia antes).
-                // Atualizamos os dados dele com as informações oficiais e validadas do Keycloak
                 leadDoMarketing.setUsuarioId(usuarioId);
                 leadDoMarketing.setEmail(email);
 
@@ -104,22 +117,16 @@ public class ClienteService {
                     leadDoMarketing.setNome(nome);
                 }
 
-                // Se ele deixou o WhatsApp lá atrás na captura, nós copiamos para o perfil do Cliente oficial!
                 if (leadDoMarketing.getWhatsapp() != null) {
                     novoCliente.setWhatsapp(leadDoMarketing.getWhatsapp());
                 }
 
-                // Se o Keycloak não enviou o nome, mas ele preencheu no Guia, a gente aproveita
                 if (novoCliente.getNome() == null && leadDoMarketing.getNome() != null) {
                     novoCliente.setNome(leadDoMarketing.getNome());
                 }
             }
 
-            // 4. Salva o Lead (seja ele atualizado ou novinho em folha)
-            // Isso garante que todo cliente vai aparecer no seu LeadsDashboard!
             leadRepository.save(leadDoMarketing);
-
-            // 5. Salva o cliente oficial no banco
             return clienteRepository.save(novoCliente);
         });
     }
