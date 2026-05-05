@@ -7,8 +7,7 @@ import br.com.claricejoias_ws.dto.ProdutoDTO;
 import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.Carrinho;
 import br.com.claricejoias_ws.model.Lead;
-import br.com.claricejoias_ws.model.LeadItem;
-import br.com.claricejoias_ws.repository.CarrinhoRepository; // 👈 Novo import
+import br.com.claricejoias_ws.repository.CarrinhoRepository;
 import br.com.claricejoias_ws.repository.LeadRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -18,8 +17,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
@@ -28,9 +30,11 @@ public class LeadService {
     private final LeadRepository repository;
     private final KeycloakUserService keycloakUserService;
     private final ModelMapper modelMapper;
-
-    // Injetamos o repositório do carrinho para ler direto do banco
+    private final EvolutionApiService evolutionApiService;
     private final CarrinhoRepository carrinhoRepository;
+
+    // 👇 CACHE TEMPORÁRIO PARA OS CÓDIGOS OTP (WhatsApp -> Código)
+    private final Map<String, String> otpCache = new ConcurrentHashMap<>();
 
     // ==========================================
     // ETAPA 1: CAPTAÇÃO VIA ISCA DIGITAL (Guia de Medidas)
@@ -47,7 +51,7 @@ public class LeadService {
     public void converterEmLead(LeadDTO dto, String visitorId) {
         String whatsappLimpo = dto.getWhatsapp().replaceAll("[^0-9]", "");
 
-        if (whatsappLimpo.length() != 11) {
+        if (whatsappLimpo.length() < 10) {
             throw new RegraNegocioException("Número de WhatsApp incompleto. Certifique-se de incluir o DDD e o 9.");
         }
 
@@ -75,54 +79,94 @@ public class LeadService {
     }
 
     // ==========================================
-    // ETAPA 2: CAPTAÇÃO VIA CHECKOUT / CADASTRO
+    // ETAPA 2: CHECKOUT PREMIUM (VERIFICAÇÃO OTP)
     // ==========================================
 
-    // ==========================================
-    // ETAPA 2: CAPTAÇÃO VIA CHECKOUT / CADASTRO
-    // ==========================================
+    // PASSO A: Gera o código e envia via Evolution API
+    public void solicitarCodigoOtp(String whatsapp) {
+        String whatsappLimpo = whatsapp.replaceAll("[^0-9]", "");
 
+        // Gera um PIN de 6 dígitos aleatório
+        String otp = String.format("%06d", new Random().nextInt(999999));
+
+        // Salva na memória do servidor
+        otpCache.put(whatsappLimpo, otp);
+
+        // Dispara a mensagem
+        String mensagem = String.format("🔒 Seu código de segurança Clarice Joias é: *%s*\n\nNão compartilhe este código com ninguém.", otp);
+        evolutionApiService.enviarMensagemTexto(whatsappLimpo, mensagem);
+    }
+
+    // PASSO B: Valida se o que o cliente digitou bate com a memória
+    public boolean validarCodigoOtp(String whatsapp, String codigoInformado) {
+        String whatsappLimpo = whatsapp.replaceAll("[^0-9]", "");
+        String codigoSalvo = otpCache.get(whatsappLimpo);
+
+        if (codigoSalvo != null && codigoSalvo.equals(codigoInformado)) {
+            otpCache.remove(whatsappLimpo); // Limpa o código para não ser usado duas vezes
+            return true;
+        }
+        return false;
+    }
+
+    // PASSO C: Finaliza o pedido (Cria usuário e envia mensagem de sucesso)
     @Transactional
     public Lead processarNovoLead(LeadRequestDTO dto, String visitorId) {
+        String whatsappLimpo = dto.getWhatsapp().replaceAll("[^0-9]", "");
 
-        // INTEGRAÇÃO COM KEYCLOAK
-        if (dto.isCriarConta() && dto.getSenha() != null && !dto.getSenha().trim().isEmpty()) {
-            // Cria o Cliente no banco local e vincula o histórico do computador!
-            keycloakUserService.criarUsuarioCliente(dto.getEmail(), dto.getSenha(), dto.getNome(), dto.getWhatsapp(), visitorId);
+        // 1. Cria a conta no Keycloak (se ele não estiver logado já)
+        if (dto.isCriarConta()) {
+            // Cria uma senha fixa aleatória para ele poder logar depois no painel
+            String senhaAleatoria = String.format("%06d", new Random().nextInt(999999));
+            String emailKeycloak = whatsappLimpo + "@claricejoias.com.br";
+
+            try {
+                keycloakUserService.criarUsuarioCliente(emailKeycloak, senhaAleatoria, dto.getNome(), whatsappLimpo, visitorId);
+            } catch (Exception e) {
+                // Ignora se o usuário já existir no Keycloak
+            }
+
+            // Envia WhatsApp de Sucesso com a senha gerada
+            String mensagemConta = String.format(
+                    "Olá *%s*! 💎 Recebemos seu pedido!\n\n" +
+                            "Para acompanhar o status depois, criamos um acesso rápido para você:\n" +
+                            "👤 Usuário: *%s*\n🔑 Senha: *%s*\n\n" +
+                            "Nossa equipe já vai te atender por aqui para finalizar os detalhes da forma de pagamento escolhida!",
+                    dto.getNome(), whatsappLimpo, senhaAleatoria
+            );
+            evolutionApiService.enviarMensagemTexto(whatsappLimpo, mensagemConta);
+
+        } else {
+            // Se ele já estava logado, só avisa do pedido
+            String mensagemPedido = String.format(
+                    "Olá *%s*! 💎 Recebemos seu pedido com sucesso!\n\n" +
+                            "Nossa equipe já vai te atender por aqui para finalizar os detalhes!",
+                    dto.getNome()
+            );
+            evolutionApiService.enviarMensagemTexto(whatsappLimpo, mensagemPedido);
         }
 
-        // BUSCA OU CRIAÇÃO DO LEAD (Via WhatsApp)
-        Optional<Lead> leadExistente = repository.findByWhatsapp(dto.getWhatsapp());
+        // 2. Salva o Lead no Banco de Dados
+        Optional<Lead> leadExistente = repository.findByWhatsapp(whatsappLimpo);
         Lead lead;
 
         if (leadExistente.isPresent()) {
-            // Atualiza o lead que já existia (ex: alguém que baixou o e-book antes de comprar)
             lead = leadExistente.get();
             lead.setNome(dto.getNome());
-            lead.setEmail(dto.getEmail());
             lead.setAtivo(true);
             lead.setComprou(false);
-
-            // Atualiza o rastro de navegação caso ele esteja usando outro PC/Celular agora
             if (visitorId != null) {
                 lead.setVisitorId(visitorId);
             }
-
-            // 🚨 NOTA: Não precisamos mais limpar ou atualizar a lista de itens aqui,
-            // pois o painel vai ler isso direto da tabela de Carrinho em tempo real!
-
         } else {
-            // Cria um lead totalmente novo
             lead = new Lead();
-            lead.setWhatsapp(dto.getWhatsapp());
+            lead.setWhatsapp(whatsappLimpo);
             lead.setNome(dto.getNome());
-            lead.setEmail(dto.getEmail());
             lead.setAtivo(true);
             lead.setComprou(false);
             lead.setVisitorId(visitorId);
         }
 
-        // SALVAR NO BANCO
         return repository.save(lead);
     }
 
@@ -136,14 +180,10 @@ public class LeadService {
     }
 
     public Page<LeadDTO> listarTodos(Pageable pageable) {
-        // 1. Busca a página de leads do banco
         Page<Lead> leadsPage = repository.findAll(pageable);
 
-        // 2. Mapeia cada Lead para LeadDTO e busca o carrinho em tempo real
         return leadsPage.map(lead -> {
             LeadDTO dto = modelMapper.map(lead, LeadDTO.class);
-
-            // Tenta achar o carrinho atual da pessoa
             Optional<Carrinho> carrinhoDoLead = Optional.empty();
 
             if (lead.getUsuarioId() != null) {
@@ -153,19 +193,14 @@ public class LeadService {
                 carrinhoDoLead = carrinhoRepository.findFirstByVisitorId(lead.getVisitorId());
             }
 
-            // Se achou um carrinho, pega os produtos e coloca no DTO para o FrontEnd ver!
             carrinhoDoLead.ifPresent(carrinho -> {
-                // Aqui estou assumindo que o seu LeadDTO tem uma lista que aceita esses dados.
-                // Ajuste os nomes dos "setters" conforme estiver na sua classe DTO.
                 List<LeadItemDTO> itensDoCarrinho = carrinho.getItens().stream().map(item -> {
                     LeadItemDTO itemDto = new LeadItemDTO();
                     itemDto.setId(item.getProduto().getId());
-                    itemDto.setProduto(modelMapper.map(item.getProduto(), ProdutoDTO.class) );
+                    itemDto.setProduto(modelMapper.map(item.getProduto(), ProdutoDTO.class));
                     itemDto.setQuantidade(item.getQuantidade());
-//                    itemDto.setPreco(item.getProduto().getPreco());
                     return itemDto;
                 }).toList();
-
                 dto.setItens(itensDoCarrinho);
             });
 

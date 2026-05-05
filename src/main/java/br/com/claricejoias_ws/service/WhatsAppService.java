@@ -42,8 +42,17 @@ public class WhatsAppService {
     @Value("${app.whatsapp.cooldown-horas:24}")
     private int cooldownHoras;
 
-    private final String evolutionApiUrl = "http://localhost:8081/message/sendText/claricejoias";
-    private final String apiKey = "claricejoias";
+    @Value("${evolution.api.url}")
+    private String evolutionApiUrl;
+
+    @Value("${evolution.api.instance}") // Ex: claricejoias (nome da instância logada)
+    private String instancia;
+
+
+
+
+    @Value("{evolution.api.key}")
+    private String apiKey;
 
     public WhatsAppService(HistoricoDisparoRepository historicoRepository,
                            FilaDisparoRepository filaRepository,
@@ -163,7 +172,8 @@ public class WhatsAppService {
         );
 
         try {
-            restTemplate.postForEntity(evolutionApiUrl, new HttpEntity<>(body, headers), String.class);
+            String url = evolutionApiUrl + "/message/sendText/" + instancia;
+            restTemplate.postForEntity(url, new HttpEntity<>(body, headers), String.class);
             System.out.println("Fila PROCESSADA: Mensagem enviada via Evolution para " + numeroCorreto);
 
             disparoAtual.setStatus(StatusDisparo.ENVIADO);
@@ -212,7 +222,9 @@ public class WhatsAppService {
         );
 
         try {
-            restTemplate.postForEntity(evolutionApiUrl, new HttpEntity<>(body, headers), String.class);
+
+            String url = evolutionApiUrl + "/message/sendText/" + instancia;
+            restTemplate.postForEntity(url, new HttpEntity<>(body, headers), String.class);
             System.out.println("Fila PROCESSADA: Cobrança enviada via Evolution para " + numeroCorreto);
 
             cobranca.setStatus(StatusDisparo.ENVIADO);

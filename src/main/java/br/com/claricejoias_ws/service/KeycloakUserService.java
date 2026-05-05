@@ -12,9 +12,10 @@ import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Collections;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -23,6 +24,7 @@ public class KeycloakUserService {
     private final Keycloak keycloak;
     private final ClienteRepository clienteRepository;
     private final LeadRepository leadRepository;
+    private final EvolutionApiService evolutionApiService;
 
     private final String REALM_NAME = "claricejoias";
 
@@ -30,22 +32,20 @@ public class KeycloakUserService {
      * Fluxo para Clientes: Cadastro direto com senha definida no modal da loja.
      * Agora recebe o visitorId para aproveitar os dados do Lead!
      */
-    @Transactional // Garante que se o banco falhar, o processo reverta com segurança
+    @Transactional(propagation = Propagation.REQUIRES_NEW) // Garante que se o banco falhar, o processo reverta com segurança
     public void criarUsuarioCliente(String email, String senha, String nomeCompleto, String whatsapp, String visitorId) {
         String whatsappLimpo = (whatsapp != null) ? whatsapp.replaceAll("[^0-9]", "") : null;
-        // =========================================================
-        // VALIDAÇÃO PRÉVIA: Evita criar no Keycloak se o Zap já existe
-        // =========================================================
+
         if (clienteRepository.existsByWhatsapp(whatsappLimpo)) {
             throw new RegraNegocioException("Este número de WhatsApp já está vinculado a outra conta.");
         }
 
-        UserRepresentation user = criarRepresentacaoBasica(email, email);
+        // AGORA PASSAMOS OS DADOS CORRETOS: email, nome e whatsapp
+        UserRepresentation user = criarRepresentacaoBasica(email, nomeCompleto, whatsappLimpo);
 
-        // 1. Cria no Keycloak
         Response response = keycloak.realm(REALM_NAME).users().create(user);
 
-        // 2. Processa a resposta e pega o ID gerado pelo Keycloak
+        // O processarResposta continua recebendo a senha (o PIN aleatório) para setar no Keycloak
         String userId = processarResposta(response, senha, "cliente");
 
         // 3. Prepara o Cliente no banco de dados local
@@ -110,31 +110,78 @@ public class KeycloakUserService {
         System.out.println("Cliente " + nomeCompleto + " inserido no Keycloak, Cliente e na Esteira de Marketing (Lead)!");
     }
 
+
+    public void redefinirSenhaTemporaria(String userId, String novaSenha) {
+        CredentialRepresentation credential = new CredentialRepresentation();
+        credential.setType(CredentialRepresentation.PASSWORD);
+        credential.setValue(novaSenha);
+        credential.setTemporary(true); // OBRIGA a trocar no login
+
+        keycloak.realm(REALM_NAME).users().get(userId).resetPassword(credential);
+    }
+
     /**
      * Fluxo para Funcionários (ADM): Cadastro sem senha.
      */
-    public void criarUsuarioFuncionario(String email, String nomeCompleto) {
-        UserRepresentation user = criarRepresentacaoBasica(email, nomeCompleto);
-        user.setRequiredActions(Collections.singletonList("UPDATE_PASSWORD"));
-        Response response = keycloak.realm(REALM_NAME).users().create(user);
-        processarResposta(response, null, "ADMIN");
+//    public void criarUsuarioFuncionario(String email, String nomeCompleto) {
+//        UserRepresentation user = criarRepresentacaoBasica(email, nomeCompleto);
+//        user.setRequiredActions(Collections.singletonList("UPDATE_PASSWORD"));
+//        Response response = keycloak.realm(REALM_NAME).users().create(user);
+//        processarResposta(response, null, "ADMIN");
+//    }
+
+
+
+    public void recuperarSenhaViaWhatsApp(String whatsapp) {
+        String whatsappLimpo = whatsapp.replaceAll("[^0-9]", "");
+
+        // 1. Verifica se o cliente existe
+        Cliente cliente = clienteRepository.findByWhatsapp(whatsappLimpo)
+                .orElseThrow(() -> new RegraNegocioException("Número de WhatsApp não encontrado no sistema."));
+
+        // 2. Gera a nova senha provisória de 6 dígitos
+        String pinProvisorio = String.format("%06d", new Random().nextInt(999999));
+
+        // 3. Atualiza a senha direto no Keycloak (como Temporária)
+        // O userId do Keycloak você salvou na entidade Cliente!
+        redefinirSenhaTemporaria(cliente.getUsuarioId(), pinProvisorio);
+
+        // 4. Dispara a mensagem via Evolution API
+        String mensagem = String.format(
+                "Olá *%s*! 🔒\n\nVocê solicitou a recuperação de senha na Clarice Joias.\n" +
+                        "Sua nova senha de acesso provisória é: *%s*\n\n" +
+                        "Acesse o site e faça login com ela. O sistema pedirá para você criar uma nova senha definitiva logo em seguida.",
+                cliente.getNome(), pinProvisorio
+        );
+
+        evolutionApiService.enviarMensagemTexto(whatsappLimpo, mensagem);
     }
 
-    // --- MÉTODOS AUXILIARES ---
 
-    private UserRepresentation criarRepresentacaoBasica(String email, String nomeCompleto) {
+    private UserRepresentation criarRepresentacaoBasica(String email, String nomeCompleto, String whatsapp) {
         UserRepresentation user = new UserRepresentation();
-        // Setando o username igual ao email é uma boa prática para e-commerce
-        user.setUsername(nomeCompleto);
+
+        // Username agora é o WhatsApp (melhor para o login via Evolution API)
+        user.setUsername(whatsapp);
         user.setEmail(email);
         user.setEnabled(true);
         user.setEmailVerified(false);
 
-        String[] nomes = nomeCompleto.split(" ", 2);
+        // A MÁGICA: Obriga o usuário a mudar a senha no primeiro login
+        user.setRequiredActions(java.util.Collections.singletonList("UPDATE_PASSWORD"));
+
+        // Separação do nome
+        String[] nomes = nomeCompleto.trim().split(" ", 2);
         user.setFirstName(nomes[0]);
         if (nomes.length > 1) {
             user.setLastName(nomes[1]);
         }
+
+        // Adiciona o WhatsApp nos atributos para consulta posterior
+        Map<String, List<String>> attributes = new HashMap<>();
+        attributes.put("whatsapp", java.util.Collections.singletonList(whatsapp));
+        user.setAttributes(attributes);
+
         return user;
     }
 
@@ -167,9 +214,13 @@ public class KeycloakUserService {
 
     private void definirSenha(String userId, String senha) {
         CredentialRepresentation credential = new CredentialRepresentation();
-        credential.setTemporary(false);
+
+        // Mudamos para TRUE: Isso indica que a senha é apenas um PIN provisório
+        credential.setTemporary(true);
+
         credential.setType(CredentialRepresentation.PASSWORD);
         credential.setValue(senha);
+
         keycloak.realm(REALM_NAME).users().get(userId).resetPassword(credential);
     }
 

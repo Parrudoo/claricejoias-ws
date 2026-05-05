@@ -101,4 +101,21 @@ public class LeadController {
             return ResponseEntity.notFound().build();
         }
     }
+
+
+    @PostMapping("/solicitar-codigo")
+    public ResponseEntity<?> solicitarCodigo(@RequestParam String whatsapp) {
+        leadService.solicitarCodigoOtp(whatsapp);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/validar-codigo")
+    public ResponseEntity<?> validarCodigo(@RequestParam String whatsapp, @RequestParam String codigo) {
+        boolean valido = leadService.validarCodigoOtp(whatsapp, codigo);
+        if (valido) {
+            return ResponseEntity.ok().build();
+        } else {
+            return ResponseEntity.badRequest().body("Código inválido");
+        }
+    }
 }

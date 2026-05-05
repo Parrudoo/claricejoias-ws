@@ -30,7 +30,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ProdutoService {
 
-
     private final ProdutoRepository produtoRepository;
     private final AutenticacaoService autenticacaoService;
     private final ModelMapper mapper;
@@ -86,7 +85,6 @@ public class ProdutoService {
             produto.setLoginUsuario(autenticacaoService.getUsername());
             produto.setSubcategoria(produtoAtualizado.getSubcategoria());
             produto.setRascunho(false);
-            // produto.setSubcategoria(produtoAtualizado.getSubcategoria());
 
             // Se o usuário enviou arquivos novos na hora de editar
             if (files != null && !files.isEmpty()) {
@@ -193,8 +191,8 @@ public class ProdutoService {
 
                     if (existente.isEmpty()) {
                         Produto rascunho = new Produto();
-                        rascunho.setCodigo(codigoExtraido); // Ex: "P497 P"
-                        rascunho.setNome(descricaoExtraida); // Ex: "Pulseira Folheado a Prata"
+                        rascunho.setCodigo(codigoExtraido); // Ex: "P710"
+                        rascunho.setNome(descricaoExtraida); // Ex: "Pulseira Folheado a Ouro"
 
                         // 👇 NOVA LÓGICA DE PRECIFICAÇÃO INTEGRADA AQUI
                         if (vUnComStr != null && !vUnComStr.trim().isEmpty()) {
@@ -222,9 +220,6 @@ public class ProdutoService {
 
                         // Define como inativo e sem estoque até a Clarice revisar e salvar a foto
                         rascunho.setEstoque(0);
-
-                        // Se você tiver um campo "ativo" ou "status", defina como inativo/rascunho aqui
-                        // rascunho.setAtivo(false);
 
                         produtoRepository.save(rascunho);
                     }
@@ -267,7 +262,7 @@ public class ProdutoService {
                 continue; // Pula se o arquivo for inválido
             }
 
-            // 1. Extrai o código base (Ex: "BS5455") baseado no nome do arquivo original
+            // 1. Extrai o código base (Ex: "p710_g.jpg" -> "P710")
             String codigoProduto = extrairCodigoDoArquivo(nomeOriginal);
 
             // 2. Busca o produto no banco
@@ -277,7 +272,7 @@ public class ProdutoService {
                 Produto produto = produtoOpt.get();
 
                 try {
-                    // 3. Faz o upload para o Minio (Se já existir com o mesmo nome, o MinIO SOBRESCREVE a foto velha)
+                    // 3. Faz o upload para o Minio
                     String objectNameSalvo = minioService.upload(imagem);
 
                     // 4. Verifica se a imagem JÁ ESTÁ na lista do banco de dados
@@ -291,14 +286,11 @@ public class ProdutoService {
                         log.info("Sucesso: Nova imagem '{}' adicionada ao produto '{}' e salva no Minio.",
                                 objectNameSalvo, codigoProduto);
                     } else {
-                        // Se JÁ existe no banco, não salva de novo para não duplicar, apenas avisa que a foto foi atualizada
                         log.info("Atualização: A foto '{}' do produto '{}' foi substituída no Minio com sucesso.",
                                 objectNameSalvo, codigoProduto);
                     }
 
                 } catch (Exception e) {
-                    // Usamos um try-catch dentro do for para que, se der erro em 1 imagem,
-                    // o sistema não trave e continue enviando as outras.
                     log.error("Erro ao enviar a imagem '{}' para o Minio: {}", nomeOriginal, e.getMessage());
                 }
 
@@ -313,11 +305,13 @@ public class ProdutoService {
         int indexPonto = nomeArquivo.lastIndexOf('.');
         String nomeSemExtensao = (indexPonto != -1) ? nomeArquivo.substring(0, indexPonto) : nomeArquivo;
 
-        // 2. Substitui os underlines "_" por espaços " "
-        // Exemplo: "P497_P" se transforma em "P497 P"
-        String codigo = nomeSemExtensao.replace('_', ' ');
+        // 2. Procura se existe um underline "_" (ex: p710_g)
+        int indexUnderline = nomeSemExtensao.indexOf('_');
 
-        // 3. Retorna tudo em maiúsculo e garante que não fiquem espaços sobrando nas pontas
+        // 3. Se houver underline, pega apenas a parte ANTES dele. Se não houver, mantém o nome.
+        String codigo = (indexUnderline != -1) ? nomeSemExtensao.substring(0, indexUnderline) : nomeSemExtensao;
+
+        // 4. Retorna tudo em maiúsculo e garante que não fiquem espaços sobrando
         return codigo.trim().toUpperCase();
     }
 

@@ -1,8 +1,13 @@
 package br.com.claricejoias_ws.controller;
 
+import br.com.claricejoias_ws.exceptions.RegraNegocioException;
+import br.com.claricejoias_ws.model.Cliente;
+import br.com.claricejoias_ws.repository.ClienteRepository;
+import br.com.claricejoias_ws.service.EvolutionApiService;
 import br.com.claricejoias_ws.service.KeycloakAuthService;
 import br.com.claricejoias_ws.service.KeycloakUserService;
 import io.swagger.v3.oas.annotations.Operation;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -10,16 +15,17 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Collections;
 import java.util.Map;
+import java.util.Random;
 
 @RestController
 @RequestMapping("/api/auth")
+@RequiredArgsConstructor
 public class AuthController {
 
-    @Autowired
-    private KeycloakAuthService authService;
 
-    @Autowired
-    private KeycloakUserService userService;
+    private final KeycloakAuthService authService;
+    private final KeycloakUserService userService;
+
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody Map<String, String> credenciais) {
@@ -54,4 +60,26 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Collections.singletonMap("erro", e.getMessage()));
         }
     }
+
+
+    @PostMapping("/recuperar-senha")
+    public ResponseEntity<?> recuperarSenha(@RequestParam String whatsapp) {
+        try {
+            // Chama o serviço que faz a mágica (Keycloak + Evolution API)
+            userService.recuperarSenhaViaWhatsApp(whatsapp);
+
+            // Retorna 200 OK para o React saber que deu certo
+            return ResponseEntity.ok(Map.of("mensagem", "Senha provisória enviada com sucesso!"));
+
+        } catch (RegraNegocioException e) {
+            // Se o WhatsApp não existir no banco, cai aqui e devolve 400 Bad Request
+            return ResponseEntity.badRequest().body(Map.of("erro", e.getMessage()));
+
+        } catch (Exception e) {
+            // Se der pau no Keycloak ou no Evolution API, devolve erro 500
+            System.err.println("Erro ao recuperar senha: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(Map.of("erro", "Ocorreu um erro interno ao processar a solicitação."));
+        }
+    }
+
 }
