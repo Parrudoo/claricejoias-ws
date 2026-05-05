@@ -27,15 +27,13 @@ import java.util.Map;
 import java.util.Optional;
 
 @Service
+@RequiredArgsConstructor
 public class WhatsAppService {
 
-    private final RestTemplate restTemplate;
-
-    // Repositórios para Leads (Marketing)
+    private final RestTemplate restTemplate = new RestTemplate();
     private final HistoricoDisparoRepository historicoRepository;
     private final FilaDisparoRepository filaRepository;
-
-    // Repositórios para Clientes (Cobrança e Relacionamento)
+    private  final EvolutionApiService evolutionApiService;
     private final HistoricoCobrancaRepository historicoCobrancaRepository;
     private final FilaCobrancaRepository filaCobrancaRepository;
 
@@ -54,16 +52,6 @@ public class WhatsAppService {
     @Value("{evolution.api.key}")
     private String apiKey;
 
-    public WhatsAppService(HistoricoDisparoRepository historicoRepository,
-                           FilaDisparoRepository filaRepository,
-                           HistoricoCobrancaRepository historicoCobrancaRepository,
-                           FilaCobrancaRepository filaCobrancaRepository) {
-        this.restTemplate = new RestTemplate();
-        this.historicoRepository = historicoRepository;
-        this.filaRepository = filaRepository;
-        this.historicoCobrancaRepository = historicoCobrancaRepository;
-        this.filaCobrancaRepository = filaCobrancaRepository;
-    }
 
     // =========================================================================
     // 1. ENFILEIRAR MENSAGEM PARA LEADS (Aba de Leads / Marketing)
@@ -190,6 +178,61 @@ public class WhatsAppService {
             disparoAtual.setMensagemErro(e.getMessage());
             filaRepository.save(disparoAtual);
         }
+    }
+
+
+    // =========================================================================
+    // Roda a cada 15.000 milissegundos (15 segundos) EXATOS após o fim do último envio
+    // Isso garante que você nunca vai mandar rajadas de mensagens!
+    // =========================================================================
+    @Scheduled(fixedDelay = 15000)
+    public void processarFila() {
+
+        // 1. Busca a mensagem de OTP mais antiga que está PENDENTE
+        // (Seu repositório precisa deste método)
+        Optional<FilaDisparo> mensagemPendente = filaRepository
+                .findFirstByTipoAndStatusOrderByDataCriacaoAsc("OTP", StatusDisparo.PENDENTE);
+
+        if (mensagemPendente.isEmpty()) {
+            return; // Fila vazia, não faz nada e vai dormir por 15 segundos
+        }
+
+        FilaDisparo fila = mensagemPendente.get();
+
+        // =========================================================================
+        // REGRA DE OURO (Timeout): Se a mensagem tá na fila há mais de 5 minutos,
+        // o usuário já desistiu. Não envie, economize seu limite da API!
+        // =========================================================================
+        long minutosNaFila = ChronoUnit.MINUTES.between(fila.getDataCriacao(), LocalDateTime.now());
+        if (minutosNaFila >= 5) {
+            fila.setStatus(StatusDisparo.EXPIRADO);
+            fila.setMotivoFalha("OTP expirou antes do envio (mais de 5 min na fila)");
+            filaRepository.save(fila);
+            System.out.println("OTP descartado, tempo expirado.");
+            return;
+            // Ele não enviou, então no próximo milissegundo ele vai rodar de novo
+            // para pegar a próxima mensagem da fila.
+        }
+
+        // 3. Tenta enviar pelo Evolution API
+        try {
+            evolutionApiService.enviarMensagemTexto(fila.getNumeroDestino(), fila.getTexto());
+
+            fila.setStatus(StatusDisparo.ENVIADO);
+            fila.setDataDisparo(LocalDateTime.now());
+            System.out.println("OTP enviado com sucesso para: " + fila.getNumeroDestino());
+
+        } catch (Exception e) {
+            fila.setStatus(StatusDisparo.ERRO);
+//            fila.setMotivoFalha(e.getMessage());
+            System.err.println("Erro ao disparar OTP: " + e.getMessage());
+        }
+
+        // 4. Atualiza no banco
+        filaRepository.save(fila);
+
+        // O método acaba aqui. O Spring vai cravar 15 segundos no relógio agora
+        // para garantir a margem de segurança antes de buscar o próximo!
     }
 
     // =========================================================================

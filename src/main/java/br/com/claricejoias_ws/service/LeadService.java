@@ -4,18 +4,27 @@ import br.com.claricejoias_ws.dto.LeadDTO;
 import br.com.claricejoias_ws.dto.LeadItemDTO;
 import br.com.claricejoias_ws.dto.LeadRequestDTO;
 import br.com.claricejoias_ws.dto.ProdutoDTO;
+import br.com.claricejoias_ws.enums.StatusDisparo;
 import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.Carrinho;
+import br.com.claricejoias_ws.model.FilaDisparo;
 import br.com.claricejoias_ws.model.Lead;
 import br.com.claricejoias_ws.repository.CarrinhoRepository;
+import br.com.claricejoias_ws.repository.FilaDisparoRepository;
 import br.com.claricejoias_ws.repository.LeadRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.StaleObjectStateException;
 import org.modelmapper.ModelMapper;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -32,8 +41,9 @@ public class LeadService {
     private final ModelMapper modelMapper;
     private final EvolutionApiService evolutionApiService;
     private final CarrinhoRepository carrinhoRepository;
+    private final FilaDisparoRepository filaDisparoRepository;
 
-    // 👇 CACHE TEMPORÁRIO PARA OS CÓDIGOS OTP (WhatsApp -> Código)
+    // CACHE TEMPORÁRIO PARA OS CÓDIGOS OTP (WhatsApp -> Código)
     private final Map<String, String> otpCache = new ConcurrentHashMap<>();
 
     // ==========================================
@@ -86,15 +96,23 @@ public class LeadService {
     public void solicitarCodigoOtp(String whatsapp) {
         String whatsappLimpo = whatsapp.replaceAll("[^0-9]", "");
 
-        // Gera um PIN de 6 dígitos aleatório
+        // 1. Gera o OTP e salva no Cache do servidor (Validade de 5 minutos, por exemplo)
         String otp = String.format("%06d", new Random().nextInt(999999));
-
-        // Salva na memória do servidor
         otpCache.put(whatsappLimpo, otp);
 
-        // Dispara a mensagem
+        // 2. Monta a mensagem
         String mensagem = String.format("🔒 Seu código de segurança Clarice Joias é: *%s*\n\nNão compartilhe este código com ninguém.", otp);
-        evolutionApiService.enviarMensagemTexto(whatsappLimpo, mensagem);
+
+        // 3. Salva na Fila (Apenas anota no banco, NÃO envia ainda)
+        FilaDisparo fila = new FilaDisparo();
+        fila.setNumeroDestino(whatsappLimpo); // Se não tiver o Lead ainda, salva só o número
+        fila.setTexto(mensagem);
+        fila.setTipo("OTP"); // Dica: Prioridade máxima
+        fila.setStatus(StatusDisparo.PENDENTE);
+        fila.setDataCriacao(LocalDateTime.now());
+
+        filaDisparoRepository.save(fila);
+        System.out.println("OTP de " + whatsappLimpo + " entrou na fila de espera.");
     }
 
     // PASSO B: Valida se o que o cliente digitou bate com a memória
@@ -109,8 +127,16 @@ public class LeadService {
         return false;
     }
 
-    // PASSO C: Finaliza o pedido (Cria usuário e envia mensagem de sucesso)
     @Transactional
+    @Retryable(
+            retryFor = {
+                    DataIntegrityViolationException.class,
+                    ObjectOptimisticLockingFailureException.class,
+                    StaleObjectStateException.class
+            },
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 150)
+    )
     public Lead processarNovoLead(LeadRequestDTO dto, String visitorId) {
         String whatsappLimpo = dto.getWhatsapp().replaceAll("[^0-9]", "");
 
@@ -120,11 +146,9 @@ public class LeadService {
             String senhaAleatoria = String.format("%06d", new Random().nextInt(999999));
             String emailKeycloak = whatsappLimpo + "@claricejoias.com.br";
 
-            try {
+
                 keycloakUserService.criarUsuarioCliente(emailKeycloak, senhaAleatoria, dto.getNome(), whatsappLimpo, visitorId);
-            } catch (Exception e) {
-                // Ignora se o usuário já existir no Keycloak
-            }
+
 
             // Envia WhatsApp de Sucesso com a senha gerada
             String mensagemConta = String.format(

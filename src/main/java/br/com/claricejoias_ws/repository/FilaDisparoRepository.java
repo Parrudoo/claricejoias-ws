@@ -12,6 +12,8 @@ public interface FilaDisparoRepository extends JpaRepository<FilaDisparo, Long> 
 
     Optional<FilaDisparo> findFirstByStatusOrderByDataCriacaoAsc(StatusDisparo status);
 
-    // 👇 NOVO: Retorna true se já houver um registro com este status para este lead
+    // NOVO: Retorna true se já houver um registro com este status para este lead
     boolean existsByLeadIdAndStatus(Long leadId, StatusDisparo status);
+
+    Optional<FilaDisparo> findFirstByTipoAndStatusOrderByDataCriacaoAsc(String otp, StatusDisparo statusDisparo);
 }

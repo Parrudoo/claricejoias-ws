@@ -37,7 +37,7 @@ public class KeycloakUserService {
         String whatsappLimpo = (whatsapp != null) ? whatsapp.replaceAll("[^0-9]", "") : null;
 
         if (clienteRepository.existsByWhatsapp(whatsappLimpo)) {
-            throw new RegraNegocioException("Este número de WhatsApp já está vinculado a outra conta.");
+            throw new RegraNegocioException("Este número de WhatsApp já está vinculado a outra conta. Faça login ou recupere a senha.");
         }
 
         // AGORA PASSAMOS OS DADOS CORRETOS: email, nome e whatsapp

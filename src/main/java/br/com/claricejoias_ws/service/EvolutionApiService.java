@@ -1,5 +1,6 @@
 package br.com.claricejoias_ws.service;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -40,11 +41,11 @@ public class EvolutionApiService {
             Map<String, Object> body = new HashMap<>();
             body.put("number", numeroFormatado);
 
-            // 👇 AJUSTE AQUI: O Evolution API 1.8+ exige um objeto textMessage 👇
+            //  AJUSTE AQUI: O Evolution API 1.8+ exige um objeto textMessage
             Map<String, String> textMessage = new HashMap<>();
             textMessage.put("text", mensagem);
             body.put("textMessage", textMessage);
-            // 👆 FIM DO AJUSTE 👆
+            // FIM DO AJUSTE
 
             Map<String, Integer> options = new HashMap<>();
             options.put("delay", 1200);

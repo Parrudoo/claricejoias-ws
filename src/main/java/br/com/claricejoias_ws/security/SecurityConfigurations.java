@@ -36,6 +36,7 @@ public class SecurityConfigurations {
                         .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/visitantes/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/visitantes/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/cadastro", "/api/auth/recuperar-senha").permitAll()
 
                         .requestMatchers("api/arquivos/view/**").permitAll()
                         .requestMatchers("api/carrinho/**").permitAll()
