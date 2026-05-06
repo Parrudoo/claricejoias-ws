@@ -27,4 +27,5 @@ public class FilaDisparo {
     private String tipo;
     private LocalDateTime dataDisparo;
     private String motivoFalha;
+    private String urlImagem;
 }

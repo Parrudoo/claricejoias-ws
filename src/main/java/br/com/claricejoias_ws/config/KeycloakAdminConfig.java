@@ -3,20 +3,24 @@ package br.com.claricejoias_ws.config;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.KeycloakBuilder;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
 public class KeycloakAdminConfig {
 
+    // 1. Injetamos a URL dinâmica (com localhost como padrão para sua IDE)
+    @Value("${keycloak.server-url:http://localhost:8083}")
+    private String keycloakServerUrl;
+
     @Bean
     public Keycloak keycloakAdminClient() {
-        // Usando as credenciais de admin que você definiu no docker-compose.yml
         return KeycloakBuilder.builder()
-                .serverUrl("http://localhost:8083") // A porta exposta do seu Keycloak
-                .realm("master") // O login de administrador master é feito no realm 'master'
+                .serverUrl(keycloakServerUrl) // 2. Trocamos a String fixa pela variável
+                .realm("master")
                 .grantType(OAuth2Constants.PASSWORD)
-                .clientId("admin-cli") // Cliente padrão de administração do Keycloak
+                .clientId("admin-cli")
                 .username("admin")
                 .password("admin")
                 .build();

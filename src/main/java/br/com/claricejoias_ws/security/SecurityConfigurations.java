@@ -49,7 +49,7 @@ public class SecurityConfigurations {
                         .requestMatchers(HttpMethod.GET, "/api/leads/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/leads/**").permitAll()
                         // Opcional: Se você usa "OPTIONS" por conta do CORS do navegador, libere também:
-                        .requestMatchers(HttpMethod.OPTIONS, "/api/leads").permitAll()
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
                         // Rotas de Gestão de Produtos (Protegidas)
                         // hasAnyRole permite que tanto Operadores quanto Admins façam a ação
@@ -72,7 +72,7 @@ public class SecurityConfigurations {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList(urlFront));
+        configuration.setAllowedOrigins(Arrays.asList(urlFront.split(",")));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
         configuration.setAllowCredentials(true);

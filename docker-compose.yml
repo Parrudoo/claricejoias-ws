@@ -16,6 +16,9 @@ services:
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET_NAME=claricejoias
+      - EVOLUTION_API_URL=http://evolution-api:8080
+      - EVOLUTION_API_KEY=claricejoias
+      - EVOLUTION_API_INSTANCE=claricejoias
     depends_on:
       - minio
       - db
