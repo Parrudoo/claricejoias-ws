@@ -1,5 +1,6 @@
 package br.com.claricejoias_ws.service;
 
+import br.com.claricejoias_ws.dto.LeadDTO;
 import br.com.claricejoias_ws.enums.StatusDisparo;
 import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.Cliente;
@@ -13,6 +14,7 @@ import br.com.claricejoias_ws.repository.FilaDisparoRepository;
 import br.com.claricejoias_ws.repository.HistoricoCobrancaRepository;
 import br.com.claricejoias_ws.repository.HistoricoDisparoRepository;
 import lombok.RequiredArgsConstructor;
+import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -36,6 +38,7 @@ public class WhatsAppService {
     private final EvolutionApiService evolutionApiService;
     private final HistoricoCobrancaRepository historicoCobrancaRepository;
     private final FilaCobrancaRepository filaCobrancaRepository;
+    private final MinioService minioService;
 
     @Value("${app.whatsapp.cooldown-horas:24}")
     private int cooldownHoras;
@@ -55,18 +58,20 @@ public class WhatsAppService {
     @Value("${minio.bucket-name}")
     private String bucketName;
 
+    private final ModelMapper modelMapper;
+
     // =========================================================================
     // 1. ENFILEIRAR MENSAGEM PARA LEADS (TEXTO)
     // =========================================================================
-    public void enviarMensagemTexto(Lead lead, String texto, String operador) {
+    public void enviarMensagemTexto(LeadDTO lead, String texto, String operador) {
         if (filaRepository.existsByLeadIdAndStatus(lead.getId(), StatusDisparo.PENDENTE)) {
             throw new RegraNegocioException("Operação negada: " + lead.getNome() + " já possui uma mensagem na fila aguardando disparo.");
         }
 
-        validarCooldown(lead);
+//        validarCooldown(modelMapper.map(lead,Lead.class));
 
         FilaDisparo fila = new FilaDisparo();
-        fila.setLead(lead);
+        fila.setLead(modelMapper.map(lead,Lead.class));
         fila.setTexto(texto);
         fila.setOperador(operador);
         fila.setStatus(StatusDisparo.PENDENTE);
@@ -79,11 +84,11 @@ public class WhatsAppService {
     // =========================================================================
     // NOVO: 1.1 ENFILEIRAR IMAGEM PARA LEADS (MÍDIA)
     // =========================================================================
-    public void enviarMensagemImagem(Lead lead, String legenda, String urlImagem, String operador) {
+    public void enviarMensagemImagem(Lead lead, String legenda,String path, String operador) {
         FilaDisparo fila = new FilaDisparo();
         fila.setLead(lead);
         fila.setTexto(legenda); // A legenda vai no campo texto
-        fila.setUrlImagem(urlImagem); // O novo campo que criamos na Entidade
+        fila.setUrlImagem(path); // O novo campo que criamos na Entidade
         fila.setOperador(operador);
         fila.setStatus(StatusDisparo.PENDENTE);
         fila.setDataCriacao(LocalDateTime.now());
@@ -173,29 +178,47 @@ public class WhatsAppService {
         if (disparoAtual.getUrlImagem() != null && !disparoAtual.getUrlImagem().isEmpty()) {
 
             urlDestino = evolutionApiUrl + "/message/sendMedia/" + instancia;
-
-            // Monta o link que a Evolution vai usar para buscar no MinIO
             String nomeArquivo = disparoAtual.getUrlImagem();
-            // Evita duplicar a barra caso a minioUrl já termine com barra
-            String separadorUrl = minioUrl.endsWith("/") ? "" : "/";
-            String linkCompleto = minioUrl + separadorUrl + bucketName + "/" + nomeArquivo;
 
-            body = Map.of(
-                    "number", numeroCorreto,
-                    "mediaMessage", Map.of(
-                            "mediatype", "image",
-                            "caption", disparoAtual.getTexto() != null ? disparoAtual.getTexto() : "",
-                            "media", linkCompleto
-                    )
-            );
-            System.out.println("Processando envio de IMAGEM para " + numeroCorreto);
+            // --- COPIE E COLE ESTE BLOCO DE LOG AQUI ---
+            System.out.println("=========================================");
+            System.out.println("-> Tentando baixar do MinIO");
+            System.out.println("-> Arquivo procurado pelo Java: '" + nomeArquivo + "'");
+            System.out.println("=========================================");
+            // -------------------------------------------
+
+            try {
+                // A OPÇÃO NUCLEAR: Pega o Base64 direto do MinIO em vez de montar URL
+                String mediaBase64 = minioService.getImagemBase64(nomeArquivo);
+
+                body = Map.of(
+                        "number", numeroCorreto,
+                        "mediaMessage", Map.of(
+                                "mediatype", "image",
+                                "caption", disparoAtual.getTexto() != null ? disparoAtual.getTexto() : "",
+                                "media", mediaBase64 // <- Agora a Evolution vai aceitar sem pestanejar!
+                        )
+                );
+                System.out.println("Processando envio de IMAGEM (via Base64) para " + numeroCorreto);
+
+            } catch (Exception e) {
+                System.err.println("Fila FALHOU: Erro ao baixar imagem do MinIO: " + e.getMessage());
+
+                disparoAtual.setStatus(StatusDisparo.ERRO);
+                disparoAtual.setMensagemErro("Erro ao converter MinIO para Base64: " + e.getMessage());
+                filaRepository.save(disparoAtual);
+                return; // Interrompe o envio deste disparo
+            }
 
         } else {
             // SE NÃO TIVER IMAGEM, ENVIA TEXTO NORMAL
             urlDestino = evolutionApiUrl + "/message/sendText/" + instancia;
+
             body = Map.of(
                     "number", numeroCorreto,
-                    "textMessage", Map.of("text", disparoAtual.getTexto())
+                    "textMessage", Map.of(
+                            "text", disparoAtual.getTexto() != null ? disparoAtual.getTexto() : ""
+                    )
             );
             System.out.println("Processando envio de TEXTO para " + numeroCorreto);
         }

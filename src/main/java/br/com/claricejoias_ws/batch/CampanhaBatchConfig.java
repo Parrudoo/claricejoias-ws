@@ -1,9 +1,11 @@
 package br.com.claricejoias_ws.batch;
 
+import br.com.claricejoias_ws.dto.LeadDTO;
 import br.com.claricejoias_ws.model.Lead;
 import br.com.claricejoias_ws.repository.LeadRepository;
 import br.com.claricejoias_ws.service.WhatsAppService;
 import lombok.RequiredArgsConstructor;
+import org.modelmapper.ModelMapper;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.job.builder.JobBuilder;
@@ -25,6 +27,7 @@ import java.util.Collections;
 public class CampanhaBatchConfig {
 
     private final LeadRepository leadRepository;
+    private final ModelMapper modelMapper;
 
     // 1. READER (Lê os Leads da Base de Dados)
     @Bean
@@ -84,7 +87,7 @@ public class CampanhaBatchConfig {
             for (MensagemDTO msg : mensagens) {
                 try {
                     // Chama o serviço passando a entidade Lead inteira
-                    whatsAppService.enviarMensagemTexto(msg.getLead(), msg.getTexto(),"BATCH");
+                    whatsAppService.enviarMensagemTexto(modelMapper.map(msg.getLead(), LeadDTO.class) , msg.getTexto(),"BATCH");
 
                     // Pausa de 30 segundos mantida APENAS para o processo em lote
                     Thread.sleep(30000);

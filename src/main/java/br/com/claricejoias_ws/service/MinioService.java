@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
+import java.util.Base64;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -69,6 +70,21 @@ public class MinioService {
                         .expiry(1, TimeUnit.HOURS)
                         .build()
         );
+    }
+
+    public String getImagemBase64(String nomeArquivo) throws Exception {
+        InputStream stream = minioClient.getObject(
+                GetObjectArgs.builder()
+                        .bucket(bucketName)
+                        .object(nomeArquivo)
+                        .build()
+        );
+
+        byte[] bytes = stream.readAllBytes();
+        stream.close();
+
+        // RETORNO CORRIGIDO: Retorna apenas a string pura!
+        return Base64.getEncoder().encodeToString(bytes);
     }
 
     public InputStream download(String objectName) throws Exception {

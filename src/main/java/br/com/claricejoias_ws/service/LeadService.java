@@ -232,6 +232,41 @@ public class LeadService {
         });
     }
 
+    public LeadDTO buscarPorId(Long id) {
+        // 1. Busca o Lead (objeto simples)
+        Lead lead = repository.findById(id)
+                .orElseThrow(() -> new RegraNegocioException("Lead não encontrado"));
+
+        // 2. Converte o Lead para DTO
+        LeadDTO dto = modelMapper.map(lead, LeadDTO.class);
+
+        // 3. Busca o Carrinho
+        Optional<Carrinho> carrinhoDoLead = Optional.empty();
+
+        if (lead.getUsuarioId() != null) {
+            carrinhoDoLead = carrinhoRepository.findFirstByUsuarioId(lead.getUsuarioId());
+        }
+        if (carrinhoDoLead.isEmpty() && lead.getVisitorId() != null) {
+            carrinhoDoLead = carrinhoRepository.findFirstByVisitorId(lead.getVisitorId());
+        }
+
+        // 4. Preenche os itens se o carrinho existir
+        carrinhoDoLead.ifPresent(carrinho -> {
+            List<LeadItemDTO> itensDoCarrinho = carrinho.getItens().stream().map(item -> {
+                LeadItemDTO itemDto = new LeadItemDTO();
+                itemDto.setId(item.getProduto().getId());
+                itemDto.setProduto(modelMapper.map(item.getProduto(), ProdutoDTO.class));
+                itemDto.setQuantidade(item.getQuantidade());
+                return itemDto;
+            }).toList();
+
+            dto.setItens(itensDoCarrinho);
+        });
+
+        // 5. Retorna o DTO preenchido
+        return dto;
+    }
+
     @Transactional
     public Lead alternarStatus(Long id) {
         return repository.findById(id).map(lead -> {
