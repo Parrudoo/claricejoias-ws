@@ -65,9 +65,10 @@ public class LeadController {
     @Operation(summary = "Capturar novo lead no cadastro", description = "Cria conta no Keycloak, vincula o histórico anônimo e salva no banco.")
     public ResponseEntity<Lead> capturarLead(
             @RequestBody LeadRequestDTO dto,
-            @RequestHeader(value = "X-Visitor-ID", required = false) String visitorId) {
-
-        Lead salvo = leadService.processarNovoLead(dto, visitorId);
+            @RequestHeader(value = "X-Visitor-ID", required = false) String visitorId,
+            @AuthenticationPrincipal Jwt jwt) {
+        String usuarioId = (jwt != null) ? jwt.getSubject() : null;
+        Lead salvo = leadService.processarNovoLead(dto, visitorId,usuarioId);
         return ResponseEntity.status(HttpStatus.CREATED).body(salvo);
     }
 

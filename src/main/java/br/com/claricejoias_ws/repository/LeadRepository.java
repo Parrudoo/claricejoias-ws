@@ -21,4 +21,9 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
     Optional<Lead> findByWhatsapp(String whatsapp);
 
     Optional<Lead> findByVisitorId(String visitorId);
+
+
+    boolean existsByVisitorId(String visitorId);
+
+    Optional<Lead> findFirstByVisitorIdOrderByIdDesc(String visitorId);
 }

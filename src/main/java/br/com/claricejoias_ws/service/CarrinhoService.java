@@ -3,6 +3,7 @@ package br.com.claricejoias_ws.service;
 import br.com.claricejoias_ws.dto.CarrinhoDTO;
 import br.com.claricejoias_ws.dto.ItemCarrinhoDTO;
 import br.com.claricejoias_ws.dto.ProdutoDTO;
+import br.com.claricejoias_ws.enums.StatusCarrinho;
 import br.com.claricejoias_ws.model.Carrinho;
 import br.com.claricejoias_ws.model.ItemCarrinho;
 import br.com.claricejoias_ws.model.Produto;
@@ -64,9 +65,9 @@ public class CarrinhoService {
         Optional<Carrinho> carrinhoOpt = Optional.empty();
 
         if (isUsuarioLogado(usuarioId)) {
-            carrinhoOpt = carrinhoRepository.findFirstByUsuarioId(usuarioId);
+            carrinhoOpt = carrinhoRepository.findFirstByUsuarioIdAndStatusOrderByIdDesc(usuarioId, StatusCarrinho.ABERTO);
         } else if (visitorId != null) {
-            carrinhoOpt = carrinhoRepository.findFirstByVisitorId(visitorId);
+            carrinhoOpt = carrinhoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(visitorId, StatusCarrinho.ABERTO);
         }
 
         // Se achou, converte para DTO. Se não, retorna null (que vira 204 no Controller)
@@ -80,7 +81,7 @@ public class CarrinhoService {
         dto.setVisitorId(carrinho.getVisitorId());
         dto.setUsuarioId(carrinho.getUsuarioId());
 
-        List<ItemCarrinhoDTO> itensDTO = carrinho.getItens().stream().map(item -> {
+                    List<ItemCarrinhoDTO> itensDTO = carrinho.getItens().stream().map(item -> {
             ItemCarrinhoDTO itemDto = new ItemCarrinhoDTO();
             itemDto.setProduto(modelMapper.map(item.getProduto(), ProdutoDTO.class) );
             itemDto.setQuantidade(item.getQuantidade());
@@ -115,7 +116,7 @@ public class CarrinhoService {
         // Aqui o foco é exclusivamente mesclar os carrinhos!
 
         // 1. Busca ou cria o carrinho oficial
-        Carrinho carrinhoOficial = carrinhoRepository.findFirstByUsuarioId(usuarioId)
+        Carrinho carrinhoOficial = carrinhoRepository.findFirstByUsuarioIdAndStatusOrderByIdDesc(usuarioId,StatusCarrinho.ABERTO)
                 .orElseGet(() -> criarCarrinho(null, usuarioId));
 
         // 2. Mescla os itens caso ele tenha navegado anonimamente antes de logar
@@ -130,7 +131,7 @@ public class CarrinhoService {
         if (visitorId == null) {
             throw new IllegalArgumentException("Requisição inválida: Nenhum identificador fornecido.");
         }
-        return carrinhoRepository.findFirstByVisitorId(visitorId)
+        return carrinhoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(visitorId,StatusCarrinho.ABERTO)
                 .orElseGet(() -> criarCarrinho(visitorId, null));
     }
 
@@ -138,11 +139,12 @@ public class CarrinhoService {
         Carrinho novo = new Carrinho();
         novo.setVisitorId(visitorId);
         novo.setUsuarioId(usuarioId);
+        novo.setStatus(StatusCarrinho.ABERTO);
         return carrinhoRepository.saveAndFlush(novo);
     }
 
     private void mesclarCarrinhoAnonimoNoOficial(String visitorId, Carrinho carrinhoOficial) {
-        carrinhoRepository.findFirstByVisitorId(visitorId).ifPresent(anonimo -> {
+        carrinhoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(visitorId,StatusCarrinho.ABERTO).ifPresent(anonimo -> {
 
             // A VALIDAÇÃO DE OURO (Impede o suicídio do objeto no Hibernate)
             if (anonimo.getId().equals(carrinhoOficial.getId())) {

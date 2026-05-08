@@ -1,5 +1,6 @@
 package br.com.claricejoias_ws.model;
 
+import br.com.claricejoias_ws.enums.StatusCarrinho;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.Getter;
@@ -17,13 +18,16 @@ public class Carrinho {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Este é o identificador anônimo gerado pelo React (UUID)
-    @Column(unique = true)
+
+
     private String visitorId;
 
 
-     @Column(unique = true)
+
      private String usuarioId;
+
+     @Enumerated(EnumType.STRING)
+     private StatusCarrinho status;
 
     @OneToMany(mappedBy = "carrinho", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ItemCarrinho> itens = new ArrayList<>();

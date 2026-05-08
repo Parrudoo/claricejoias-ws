@@ -21,12 +21,8 @@ public class Lead {
     private String whatsapp;
     private String email;
 
-    // O elo de ligação com a navegação anônima (Cookies do Front)
-    @Column(name = "visitor_id", unique = true)
-    private String visitorId;
 
-    // O CAMPO NOVO: Elo de ligação com o Cliente Oficial (Keycloak)
-    @Column(name = "usuario_id")
+    private String visitorId;
     private String usuarioId;
 
     // Controles do painel

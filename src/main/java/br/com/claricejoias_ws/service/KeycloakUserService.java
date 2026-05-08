@@ -40,19 +40,16 @@ public class KeycloakUserService {
             throw new RegraNegocioException("Este número de WhatsApp já está vinculado a outra conta. Faça login ou recupere a senha.");
         }
 
-        // AGORA PASSAMOS OS DADOS CORRETOS: email, nome e whatsapp
+        // 1 e 2. Cria o usuário no Keycloak
         UserRepresentation user = criarRepresentacaoBasica(email, nomeCompleto, whatsappLimpo);
-
         Response response = keycloak.realm(REALM_NAME).users().create(user);
-
-        // O processarResposta continua recebendo a senha (o PIN aleatório) para setar no Keycloak
         String userId = processarResposta(response, senha, "cliente");
 
         // 3. Prepara o Cliente no banco de dados local
         Cliente novoCliente = new Cliente();
-        novoCliente.setUsuarioId(userId); // Esse é o vínculo oficial com o Keycloak!
+        novoCliente.setUsuarioId(userId);
         novoCliente.setEmail(email);
-        novoCliente.setWhatsapp(whatsapp);
+        novoCliente.setWhatsapp(whatsappLimpo); // Ideal salvar o limpo!
         novoCliente.setNome(nomeCompleto);
 
         // =========================================================
@@ -60,50 +57,50 @@ public class KeycloakUserService {
         // =========================================================
         Lead leadDoMarketing = null;
 
-        if (visitorId != null && !visitorId.isEmpty()) {
-            // Tenta buscar o Lead pelo rastro do navegador
-            leadDoMarketing = leadRepository.findByVisitorId(visitorId).orElse(null);
+        if (visitorId != null && !visitorId.trim().isEmpty()) {
+            // CORREÇÃO 1: Busca apenas o Lead mais RECENTE desse navegador
+            leadDoMarketing = leadRepository.findFirstByVisitorIdOrderByIdDesc(visitorId).orElse(null);
 
             // A TRAVA DO COMPUTADOR PÚBLICO
-            // Se o lead encontrado já possui um usuarioId, significa que o primeiro usuário
-            // já usou esse PC e criou a conta dele. Como um SEGUNDO usuário está criando
-            // uma conta nova agora, nós anulamos a busca para forçar a criação de um Lead virgem.
+            // Se o lead mais recente encontrado já possui um usuarioId, significa que pertence
+            // à outra pessoa que usou esse PC. Anulamos para criar um do zero para o novo cliente.
             if (leadDoMarketing != null && leadDoMarketing.getUsuarioId() != null) {
                 leadDoMarketing = null;
             }
         }
 
         if (leadDoMarketing != null) {
-            // CENÁRIO A: O cara já era um Lead ANÔNIMO (ninguém registrou conta com esse PC ainda)
-            // Vinculamos ele ao novo usuário oficial
+            // CENÁRIO A: O cara já era um Lead ANÔNIMO e ninguém registrou conta com esse PC ainda
             leadDoMarketing.setUsuarioId(userId);
-            leadDoMarketing.setNome(nomeCompleto); // Atualiza com o nome oficial do cadastro
-            leadDoMarketing.setEmail(email);       // Atualiza o email caso ele tenha mudado
-            leadDoMarketing.setWhatsapp(whatsapp);
+            leadDoMarketing.setNome(nomeCompleto);
+            leadDoMarketing.setEmail(email);
+            leadDoMarketing.setWhatsapp(whatsappLimpo);
 
-            // Se ele deixou o WhatsApp lá atrás na captura, a gente garante no perfil do Cliente!
             if (leadDoMarketing.getWhatsapp() != null) {
                 novoCliente.setWhatsapp(leadDoMarketing.getWhatsapp());
             }
         } else {
-            // CENÁRIO B: PC Público (Lead sobrescrito) ou Cadastro Direto. Criamos um Lead novinho em folha!
+            // CENÁRIO B: PC Público ou Cadastro Direto. Criamos um Lead novinho em folha!
             leadDoMarketing = new Lead();
 
-            // Gera um UUID novo na marra, ignorando o visitorId "sujo" do PC público,
-            // ou usa um novo caso não tenha vindo nada do front.
-            leadDoMarketing.setVisitorId(java.util.UUID.randomUUID().toString());
+            // CORREÇÃO 2: Mantemos o visitorId do frontend!
+            // Como o banco agora permite repetição, não precisamos mais do UUID.randomUUID().
+            // Isso garante que ele não perca o carrinho que montou na sessão atual!
+            leadDoMarketing.setVisitorId(visitorId);
+
             leadDoMarketing.setUsuarioId(userId);
             leadDoMarketing.setNome(nomeCompleto);
             leadDoMarketing.setEmail(email);
-            leadDoMarketing.setWhatsapp(whatsapp); // Já salva o Zap na criação também!
+            leadDoMarketing.setWhatsapp(whatsappLimpo);
+            leadDoMarketing.setAtivo(true);
+            leadDoMarketing.setComprou(false);
         }
 
         // 5. Salva o Lead (seja ele atualizado ou novinho em folha)
-        // Isso garante que ele vai aparecer no LeadsDashboard e no seu Job de WhatsApp do Spring Batch!
         leadRepository.save(leadDoMarketing);
 
         // =========================================================
-        // 6. Salva o cliente oficial no PostgreSQL para liberar as compras
+        // 6. Salva o cliente oficial no PostgreSQL
         // =========================================================
         clienteRepository.save(novoCliente);
 

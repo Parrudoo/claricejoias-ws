@@ -4,6 +4,7 @@ import br.com.claricejoias_ws.dto.LeadDTO;
 import br.com.claricejoias_ws.dto.LeadItemDTO;
 import br.com.claricejoias_ws.dto.LeadRequestDTO;
 import br.com.claricejoias_ws.dto.ProdutoDTO;
+import br.com.claricejoias_ws.enums.StatusCarrinho;
 import br.com.claricejoias_ws.enums.StatusDisparo;
 import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.Carrinho;
@@ -54,7 +55,7 @@ public class LeadService {
         if (visitorId == null || visitorId.trim().isEmpty()) {
             return true;
         }
-        return repository.findByVisitorId(visitorId).isEmpty();
+        return !repository.existsByVisitorId(visitorId);
     }
 
     @Transactional
@@ -69,15 +70,30 @@ public class LeadService {
                 ? visitorId
                 : UUID.randomUUID().toString();
 
-        Lead lead = repository.findByVisitorId(idNavegador)
-                .orElseGet(() -> {
-                    Lead novo = new Lead();
-                    novo.setVisitorId(idNavegador);
-                    novo.setAtivo(true);
-                    novo.setComprou(false);
-                    return novo;
-                });
+        Lead lead = null;
 
+        // 1. Busca segura pelo Lead mais recente deste navegador
+        if (visitorId != null && !visitorId.trim().isEmpty()) {
+            lead = repository.findFirstByVisitorIdOrderByIdDesc(idNavegador).orElse(null);
+
+            // 2. A TRAVA DO COMPUTADOR PÚBLICO
+            // Se o lead encontrado já pertence a uma conta oficial (tem usuarioId),
+            // nós não podemos sobrescrever os dados dele. Anulamos para forçar a criação de um novo.
+            if (lead != null && lead.getUsuarioId() != null) {
+                lead = null;
+            }
+        }
+
+        // 3. Criação ou Atualização
+        if (lead == null) {
+            lead = new Lead();
+            // Mantemos o idNavegador para não perder o vínculo com o carrinho atual!
+            lead.setVisitorId(idNavegador);
+            lead.setAtivo(true);
+            lead.setComprou(false);
+        }
+
+        // Atualiza os dados capturados na landing page / e-book
         lead.setNome(dto.getNome());
         lead.setWhatsapp(whatsappLimpo);
 
@@ -137,20 +153,21 @@ public class LeadService {
             maxAttempts = 3,
             backoff = @Backoff(delay = 150)
     )
-    public Lead processarNovoLead(LeadRequestDTO dto, String visitorId) {
+    // Adicionado o parâmetro usuarioId
+    public Lead processarNovoLead(LeadRequestDTO dto, String visitorId, String usuarioId) {
         String whatsappLimpo = dto.getWhatsapp().replaceAll("[^0-9]", "");
 
-        // 1. Cria a conta no Keycloak (se ele não estiver logado já)
-        if (dto.isCriarConta()) {
-            // Cria uma senha fixa aleatória para ele poder logar depois no painel
+        // Verifica se o usuário já está logado
+        boolean estaLogado = (usuarioId != null && !usuarioId.isEmpty());
+
+        // 1. Cria a conta no Keycloak APENAS se ele pediu para criar E NÃO estiver logado
+        if (dto.isCriarConta() && !estaLogado) {
+
             String senhaAleatoria = String.format("%06d", new Random().nextInt(999999));
             String emailKeycloak = whatsappLimpo + "@claricejoias.com.br";
 
+            keycloakUserService.criarUsuarioCliente(emailKeycloak, senhaAleatoria, dto.getNome(), whatsappLimpo, visitorId);
 
-                keycloakUserService.criarUsuarioCliente(emailKeycloak, senhaAleatoria, dto.getNome(), whatsappLimpo, visitorId);
-
-
-            // Envia WhatsApp de Sucesso com a senha gerada
             String mensagemConta = String.format(
                     "Olá *%s*! 💎 Recebemos seu pedido!\n\n" +
                             "Para acompanhar o status depois, criamos um acesso rápido para você:\n" +
@@ -161,7 +178,7 @@ public class LeadService {
             evolutionApiService.enviarMensagemTexto(whatsappLimpo, mensagemConta);
 
         } else {
-            // Se ele já estava logado, só avisa do pedido
+            // Se ele já estava logado OU escolheu não criar conta
             String mensagemPedido = String.format(
                     "Olá *%s*! 💎 Recebemos seu pedido com sucesso!\n\n" +
                             "Nossa equipe já vai te atender por aqui para finalizar os detalhes!",
@@ -172,23 +189,22 @@ public class LeadService {
 
         // 2. Salva o Lead no Banco de Dados
         Optional<Lead> leadExistente = repository.findByWhatsapp(whatsappLimpo);
-        Lead lead;
+        Lead lead = leadExistente.orElseGet(Lead::new); // Simplificação do if/else
 
-        if (leadExistente.isPresent()) {
-            lead = leadExistente.get();
-            lead.setNome(dto.getNome());
-            lead.setAtivo(true);
-            lead.setComprou(false);
-            if (visitorId != null) {
-                lead.setVisitorId(visitorId);
-            }
-        } else {
-            lead = new Lead();
-            lead.setWhatsapp(whatsappLimpo);
-            lead.setNome(dto.getNome());
-            lead.setAtivo(true);
-            lead.setComprou(false);
+        // Atualiza os dados comuns
+        lead.setWhatsapp(whatsappLimpo);
+        lead.setNome(dto.getNome());
+        lead.setAtivo(true);
+        lead.setComprou(false);
+
+        // Salva o Visitor ID se existir
+        if (visitorId != null) {
             lead.setVisitorId(visitorId);
+        }
+
+        // NOVIDADE: Salva o Usuario ID se ele estiver logado!
+        if (estaLogado) {
+            lead.setUsuarioId(usuarioId);
         }
 
         return repository.save(lead);
@@ -211,10 +227,10 @@ public class LeadService {
             Optional<Carrinho> carrinhoDoLead = Optional.empty();
 
             if (lead.getUsuarioId() != null) {
-                carrinhoDoLead = carrinhoRepository.findFirstByUsuarioId(lead.getUsuarioId());
+                carrinhoDoLead = carrinhoRepository.findFirstByUsuarioIdAndStatusOrderByIdDesc(lead.getUsuarioId(),StatusCarrinho.ABERTO);
             }
             if (carrinhoDoLead.isEmpty() && lead.getVisitorId() != null) {
-                carrinhoDoLead = carrinhoRepository.findFirstByVisitorId(lead.getVisitorId());
+                carrinhoDoLead = carrinhoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(lead.getVisitorId(),StatusCarrinho.ABERTO);
             }
 
             carrinhoDoLead.ifPresent(carrinho -> {
@@ -244,10 +260,10 @@ public class LeadService {
         Optional<Carrinho> carrinhoDoLead = Optional.empty();
 
         if (lead.getUsuarioId() != null) {
-            carrinhoDoLead = carrinhoRepository.findFirstByUsuarioId(lead.getUsuarioId());
+            carrinhoDoLead = carrinhoRepository.findFirstByUsuarioIdAndStatusOrderByIdDesc(lead.getUsuarioId(),StatusCarrinho.ABERTO);
         }
         if (carrinhoDoLead.isEmpty() && lead.getVisitorId() != null) {
-            carrinhoDoLead = carrinhoRepository.findFirstByVisitorId(lead.getVisitorId());
+            carrinhoDoLead = carrinhoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(lead.getVisitorId(),StatusCarrinho.ABERTO);
         }
 
         // 4. Preenche os itens se o carrinho existir
@@ -275,11 +291,34 @@ public class LeadService {
         }).orElseThrow(() -> new RegraNegocioException("Lead não encontrado com o ID: " + id));
     }
 
-    @Transactional
-    public Lead marcarComoComprado(Long id) {
-        return repository.findById(id).map(lead -> {
-            lead.setComprou(true);
-            return repository.save(lead);
-        }).orElseThrow(() -> new RuntimeException("Lead não encontrado com o ID: " + id));
+    @Transactional // Garante que se der erro no carrinho, o lead não salva (rollback)
+    public Lead marcarComoComprado(Long leadId) {
+        // 1. Busca o Lead
+        Lead lead = repository.findById(leadId)
+                .orElseThrow(() -> new RuntimeException("Lead não encontrado com o ID: " + leadId));
+
+        Optional<Carrinho> carrinhoAbertoOpt;
+
+        if (lead.getUsuarioId() != null){
+          carrinhoAbertoOpt   = carrinhoRepository.findFirstByUsuarioIdAndStatusOrderByIdDesc(lead.getUsuarioId(), StatusCarrinho.ABERTO);
+        }else{
+            carrinhoAbertoOpt = carrinhoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(lead.getVisitorId(), StatusCarrinho.ABERTO);
+        }
+
+
+        // 3. Se encontrar o carrinho aberto, marca como pago
+        if (carrinhoAbertoOpt.isPresent()) {
+            Carrinho carrinho = carrinhoAbertoOpt.get();
+            carrinho.setStatus(StatusCarrinho.PAGO);
+            carrinhoRepository.save(carrinho);
+        } else {
+            // Aqui você decide a regra: Lança exceção se não tiver carrinho?
+            // Ou apenas marca o lead como comprado assim mesmo?
+            // throw new RuntimeException("Nenhum carrinho em aberto encontrado para o Lead.");
+        }
+
+        // 4. Atualiza o Lead (você vai precisar adicionar o campo 'comprou' na entidade Lead)
+        lead.setComprou(true);
+        return repository.save(lead);
     }
 }

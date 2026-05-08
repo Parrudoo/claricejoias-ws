@@ -36,13 +36,12 @@ public class CarrinhoController {
     @GetMapping
     public ResponseEntity<CarrinhoDTO> buscarMeuCarrinho(
             @RequestHeader(value = "X-Visitor-ID", required = false) String visitorId,
-            @RequestHeader(value = "X-Usuario-ID", required = false) String usuarioId) {
+            @AuthenticationPrincipal Jwt jwt) {
 
-        // Usa a consulta inofensiva!
+        String usuarioId = (jwt != null) ? jwt.getSubject() : null;
         CarrinhoDTO carrinho = carrinhoService.consultarCarrinhoAtual(visitorId, usuarioId);
 
         if (carrinho == null) {
-            // Se não tem carrinho, devolve 204 No Content (O React entende que a maleta tá vazia)
             return ResponseEntity.noContent().build();
         }
 

@@ -65,30 +65,27 @@ public class ClienteService {
     public Cliente sincronizarClienteComKeycloak(Jwt jwt, String visitorId) {
         String usuarioId = jwt.getSubject();
 
-        // 1. Verifica se o cliente já existe. Se sim, retorna direto.
-        // (A verificação de Role aqui é opcional, pois se ele já existe, já foi validado antes)
         return clienteRepository.findByUsuarioId(usuarioId).orElseGet(() -> {
 
             // =========================================================
-            // 2. VALIDAÇÃO DE ROLE: SÓ PROSSEGUE SE FOR "cliente"
+            // 1. VALIDAÇÃO DE ROLE
             // =========================================================
             boolean ehCliente = false;
             Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
 
             if (realmAccess != null && realmAccess.containsKey("roles")) {
                 List<String> roles = (List<String>) realmAccess.get("roles");
-                ehCliente = roles.contains("cliente"); // Nome da role no Keycloak
+                ehCliente = roles.contains("cliente");
             }
 
             if (!ehCliente) {
-                // Se não for cliente (ex: for um admin ou funcionário),
-                // retornamos null ou lançamos uma exceção para não criar sujeira no banco de Clientes/Leads
                 System.out.println("Usuário " + usuarioId + " logou, mas não possui a Role 'cliente'. Ignorando sincronização.");
                 return null;
             }
 
-            // Se chegou aqui, é um usuário com a role "cliente" e não existe no banco.
-            // Prosseguimos com a criação:
+            // =========================================================
+            // 2. CRIAÇÃO DO NOVO CLIENTE
+            // =========================================================
             String email = jwt.getClaimAsString("email");
             String nome = jwt.getClaimAsString("name");
 
@@ -97,19 +94,36 @@ public class ClienteService {
             novoCliente.setEmail(email);
             novoCliente.setNome(nome);
 
+            // =========================================================
+            // 3. VÍNCULO COM O LEAD (Corrigido para a nova regra)
+            // =========================================================
             Lead leadDoMarketing = null;
 
-            if (visitorId != null && !visitorId.isEmpty()) {
-                leadDoMarketing = leadRepository.findByVisitorId(visitorId).orElse(null);
+            if (visitorId != null && !visitorId.trim().isEmpty()) {
+                // Pega o Lead mais RECENTE desse navegador
+                Optional<Lead> leadOpt = leadRepository.findFirstByVisitorIdOrderByIdDesc(visitorId);
+
+                if (leadOpt.isPresent()) {
+                    Lead leadEncontrado = leadOpt.get();
+                    // Proteção: Se o Lead encontrado já pertence a OUTRO usuário logado,
+                    // não podemos "roubar" ele. Vamos ignorar e criar um novo.
+                    if (leadEncontrado.getUsuarioId() == null || leadEncontrado.getUsuarioId().equals(usuarioId)) {
+                        leadDoMarketing = leadEncontrado;
+                    }
+                }
             }
 
+            // Se não achou lead válido para esse navegador, cria um do zero
             if (leadDoMarketing == null) {
                 leadDoMarketing = new Lead();
                 leadDoMarketing.setVisitorId(visitorId != null ? visitorId : UUID.randomUUID().toString());
                 leadDoMarketing.setUsuarioId(usuarioId);
                 leadDoMarketing.setNome(nome);
                 leadDoMarketing.setEmail(email);
+                leadDoMarketing.setAtivo(true);     // Boa prática definir o status
+                leadDoMarketing.setComprou(false);  // Nasce como pendente
             } else {
+                // Se achou, atualiza com os dados do Keycloak
                 leadDoMarketing.setUsuarioId(usuarioId);
                 leadDoMarketing.setEmail(email);
 
@@ -117,6 +131,7 @@ public class ClienteService {
                     leadDoMarketing.setNome(nome);
                 }
 
+                // Puxa o WhatsApp do Lead anônimo para o novo Cliente Oficial
                 if (leadDoMarketing.getWhatsapp() != null) {
                     novoCliente.setWhatsapp(leadDoMarketing.getWhatsapp());
                 }
@@ -126,6 +141,7 @@ public class ClienteService {
                 }
             }
 
+            // Salva os dois
             leadRepository.save(leadDoMarketing);
             return clienteRepository.save(novoCliente);
         });
