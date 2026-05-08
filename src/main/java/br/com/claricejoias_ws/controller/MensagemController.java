@@ -49,13 +49,11 @@ public class MensagemController {
 
         // 2. Dispara a mensagem de texto inicial
         whatsAppService.enviarMensagemTexto(lead, textoIntro.toString(), autenticacaoService.getUsername());
-
-        // 3. Loop para enviar cada produto do carrinho como uma IMAGEM
+        
         if (lead.getItens() != null && !lead.getItens().isEmpty()) {
             for (var item : lead.getItens()) {
                 var produto = item.getProduto();
 
-                // ... dentro do loop dos itens ...
                 if (produto.getImagens() != null && !produto.getImagens().isEmpty()) {
                     try {
                         String objectName = produto.getImagens().get(0);

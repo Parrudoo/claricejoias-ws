@@ -40,7 +40,7 @@ public class Venda {
 
     private BigDecimal troco;
 
-    // 👇 CORREÇÃO 1: Trocado de Double para BigDecimal
+    // CORREÇÃO 1: Trocado de Double para BigDecimal
     @Column(name = "valor_entrada")
     private BigDecimal valorEntrada = BigDecimal.ZERO;
 

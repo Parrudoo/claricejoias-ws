@@ -17,18 +17,10 @@ public class Carrinho {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-
-
     private String visitorId;
-
-
-
-     private String usuarioId;
-
-     @Enumerated(EnumType.STRING)
-     private StatusCarrinho status;
-
+    private String usuarioId;
+    @Enumerated(EnumType.STRING)
+    private StatusCarrinho status;
     @OneToMany(mappedBy = "carrinho", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ItemCarrinho> itens = new ArrayList<>();
 

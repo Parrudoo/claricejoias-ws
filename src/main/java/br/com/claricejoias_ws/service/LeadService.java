@@ -6,13 +6,13 @@ import br.com.claricejoias_ws.dto.LeadRequestDTO;
 import br.com.claricejoias_ws.dto.ProdutoDTO;
 import br.com.claricejoias_ws.enums.StatusCarrinho;
 import br.com.claricejoias_ws.enums.StatusDisparo;
+import br.com.claricejoias_ws.enums.StatusPedido;
 import br.com.claricejoias_ws.exceptions.RegraNegocioException;
-import br.com.claricejoias_ws.model.Carrinho;
-import br.com.claricejoias_ws.model.FilaDisparo;
-import br.com.claricejoias_ws.model.Lead;
+import br.com.claricejoias_ws.model.*;
 import br.com.claricejoias_ws.repository.CarrinhoRepository;
 import br.com.claricejoias_ws.repository.FilaDisparoRepository;
 import br.com.claricejoias_ws.repository.LeadRepository;
+import br.com.claricejoias_ws.repository.PedidoRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.StaleObjectStateException;
@@ -25,6 +25,7 @@ import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +44,8 @@ public class LeadService {
     private final EvolutionApiService evolutionApiService;
     private final CarrinhoRepository carrinhoRepository;
     private final FilaDisparoRepository filaDisparoRepository;
+    private final PedidoRepository pedidoRepository;
+    private final CarrinhoService carrinhoService;
 
     // CACHE TEMPORÁRIO PARA OS CÓDIGOS OTP (WhatsApp -> Código)
     private final Map<String, String> otpCache = new ConcurrentHashMap<>();
@@ -153,61 +156,91 @@ public class LeadService {
             maxAttempts = 3,
             backoff = @Backoff(delay = 150)
     )
-    // Adicionado o parâmetro usuarioId
     public Lead processarNovoLead(LeadRequestDTO dto, String visitorId, String usuarioId) {
         String whatsappLimpo = dto.getWhatsapp().replaceAll("[^0-9]", "");
-
-        // Verifica se o usuário já está logado
         boolean estaLogado = (usuarioId != null && !usuarioId.isEmpty());
 
-        // 1. Cria a conta no Keycloak APENAS se ele pediu para criar E NÃO estiver logado
-        if (dto.isCriarConta() && !estaLogado) {
+        // =========================================================
+        // 1. SALVA O LEAD PRIMEIRO (Para o pedido ter a quem pertencer)
+        // =========================================================
+        Lead lead = repository.findByWhatsapp(whatsappLimpo).orElseGet(Lead::new);
+        lead.setWhatsapp(whatsappLimpo);
+        lead.setNome(dto.getNome());
+        lead.setAtivo(true);
+        lead.setComprou(false);
 
+        if (visitorId != null) lead.setVisitorId(visitorId);
+        if (estaLogado) lead.setUsuarioId(usuarioId);
+
+        lead = repository.save(lead); // Salva e gera o ID do Lead
+
+        // =========================================================
+        // 2. CONVERTE O CARRINHO EM PEDIDO
+        // =========================================================
+        Carrinho carrinho = carrinhoService.obterOuCriarCarrinho(visitorId, usuarioId);
+
+        if (carrinho.getItens().isEmpty()) {
+            throw new RegraNegocioException("Não é possível processar a compra: O carrinho está vazio.");
+        }
+
+        Pedido novoPedido = new Pedido();
+        novoPedido.setLead(lead);
+        novoPedido.setVisitorId(visitorId);
+        novoPedido.setUsuarioId(usuarioId);
+
+        // Certifique-se de que o seu LeadRequestDTO tenha o campo formaPagamento que vem do React!
+//        novoPedido.setFormaPagamento(dto.getFormaPagamento());
+        novoPedido.setStatusPedido(StatusPedido.AGUARDANDO_WHATSAPP);
+
+        BigDecimal total = BigDecimal.ZERO;
+
+        // Transfere os itens congelando o preço
+        for (ItemCarrinho ic : carrinho.getItens()) {
+            ItemPedido ip = new ItemPedido();
+            ip.setProduto(ic.getProduto());
+            ip.setQuantidade(ic.getQuantidade());
+            ip.setPrecoUnitario(ic.getProduto().getPreco()); // Congela o preço
+
+            novoPedido.addItem(ip);
+            total = total.add(ip.getPrecoUnitario().multiply(BigDecimal.valueOf(ip.getQuantidade())));
+        }
+
+        novoPedido.setTotalCobrado(total);
+        pedidoRepository.save(novoPedido); // Salva e gera o ID do Pedido
+
+        // =========================================================
+        // 3. LIMPA O CARRINHO
+        // =========================================================
+        carrinhoService.limparCarrinho(visitorId, usuarioId);
+
+        // =========================================================
+        // 4. NOTIFICAÇÕES (AGORA COM O NÚMERO DO PEDIDO!)
+        // =========================================================
+        if (dto.isCriarConta() && !estaLogado) {
             String senhaAleatoria = String.format("%06d", new Random().nextInt(999999));
             String emailKeycloak = whatsappLimpo + "@claricejoias.com.br";
 
             keycloakUserService.criarUsuarioCliente(emailKeycloak, senhaAleatoria, dto.getNome(), whatsappLimpo, visitorId);
 
             String mensagemConta = String.format(
-                    "Olá *%s*! 💎 Recebemos seu pedido!\n\n" +
+                    "Olá *%s*! 💎 Recebemos seu pedido *#%d*!\n\n" +
                             "Para acompanhar o status depois, criamos um acesso rápido para você:\n" +
                             "👤 Usuário: *%s*\n🔑 Senha: *%s*\n\n" +
-                            "Nossa equipe já vai te atender por aqui para finalizar os detalhes da forma de pagamento escolhida!",
-                    dto.getNome(), whatsappLimpo, senhaAleatoria
+                            "Nossa equipe já vai te atender por aqui para finalizar os detalhes da forma de pagamento: *%s*!",
+                    dto.getNome(), novoPedido.getId(), whatsappLimpo, senhaAleatoria, "PIX"
             );
             evolutionApiService.enviarMensagemTexto(whatsappLimpo, mensagemConta);
 
         } else {
-            // Se ele já estava logado OU escolheu não criar conta
             String mensagemPedido = String.format(
-                    "Olá *%s*! 💎 Recebemos seu pedido com sucesso!\n\n" +
+                    "Olá *%s*! 💎 Recebemos seu pedido *#%d* com sucesso!\n\n" +
                             "Nossa equipe já vai te atender por aqui para finalizar os detalhes!",
-                    dto.getNome()
+                    dto.getNome(), novoPedido.getId()
             );
             evolutionApiService.enviarMensagemTexto(whatsappLimpo, mensagemPedido);
         }
 
-        // 2. Salva o Lead no Banco de Dados
-        Optional<Lead> leadExistente = repository.findByWhatsapp(whatsappLimpo);
-        Lead lead = leadExistente.orElseGet(Lead::new); // Simplificação do if/else
-
-        // Atualiza os dados comuns
-        lead.setWhatsapp(whatsappLimpo);
-        lead.setNome(dto.getNome());
-        lead.setAtivo(true);
-        lead.setComprou(false);
-
-        // Salva o Visitor ID se existir
-        if (visitorId != null) {
-            lead.setVisitorId(visitorId);
-        }
-
-        // NOVIDADE: Salva o Usuario ID se ele estiver logado!
-        if (estaLogado) {
-            lead.setUsuarioId(usuarioId);
-        }
-
-        return repository.save(lead);
+        return lead;
     }
 
     // ==========================================
