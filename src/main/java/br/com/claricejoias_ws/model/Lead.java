@@ -7,7 +7,7 @@ import lombok.Setter;
 import java.util.ArrayList;
 import java.util.List;
 
-// 👇 Substituímos o @Data por Getter e Setter para evitar Loop Infinito de memória
+// Substituímos o @Data por Getter e Setter para evitar Loop Infinito de memória
 @Getter
 @Setter
 @Entity
@@ -21,7 +21,6 @@ public class Lead {
     private String whatsapp;
     private String email;
 
-
     private String visitorId;
     private String usuarioId;
 
@@ -29,20 +28,14 @@ public class Lead {
     private Boolean ativo = true;
     private Boolean comprou = false;
 
-    // Relacionamento com os itens de interesse
-    @OneToMany(mappedBy = "lead", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<LeadItem> itens = new ArrayList<>();
+    @OneToMany(mappedBy = "lead", cascade = CascadeType.ALL)
+    private List<Pedido> pedidos = new ArrayList<>();
 
     // Relacionamento com o histórico ordenado
     @OneToMany(mappedBy = "lead", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("dataHoraDisparo ASC")
     private List<HistoricoDisparo> historicoDisparos = new ArrayList<>();
 
-    // Método utilitário para garantir o vínculo bidirecional
-    public void addItem(LeadItem item) {
-        itens.add(item);
-        item.setLead(this);
-    }
 
     public void setWhatsapp(String whatsapp) {
         // Se vier nulo, guarda nulo. Se vier preenchido, limpa tudo que não for número.

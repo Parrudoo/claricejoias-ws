@@ -17,8 +17,8 @@ public class Parcela {
     private Long id;
 
     @ManyToOne
-    @JoinColumn(name = "venda_id")
-    private Venda venda;
+    @JoinColumn(name = "pedido_id")
+    private Pedido pedido;
 
     private Integer numeroParcela;
     private BigDecimal valor;

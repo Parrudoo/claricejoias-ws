@@ -1,88 +1,195 @@
 package br.com.claricejoias_ws.service;
 
-import br.com.claricejoias_ws.dto.ItemPedidoDTO;
+import br.com.claricejoias_ws.dto.CheckoutDTO;
 import br.com.claricejoias_ws.dto.PedidoDTO;
-import br.com.claricejoias_ws.dto.ProdutoDTO;
+import br.com.claricejoias_ws.dto.PedidoRequestDTO;
+import br.com.claricejoias_ws.enums.OrigemPedido;
+import br.com.claricejoias_ws.enums.StatusParcela;
 import br.com.claricejoias_ws.enums.StatusPedido;
-import br.com.claricejoias_ws.model.Pedido;
+import br.com.claricejoias_ws.model.*;
+import br.com.claricejoias_ws.repository.ClienteRepository;
+import br.com.claricejoias_ws.repository.ProdutoRepository;
 import br.com.claricejoias_ws.repository.PedidoRepository;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class PedidoService {
 
     private final PedidoRepository pedidoRepository;
+    private final ProdutoRepository produtoRepository;
+    private final ClienteRepository clienteRepository;
     private final ModelMapper modelMapper;
 
-    @Transactional(readOnly = true)
-    public List<PedidoDTO> buscarMeusPedidos(String visitorId, String usuarioId) {
-        List<Pedido> pedidos = new ArrayList<>();
-
-        // 1. Prioriza buscar pelo Usuário Logado
-        if (usuarioId != null && !usuarioId.trim().isEmpty()) {
-            pedidos = pedidoRepository.findByUsuarioIdOrderByIdDesc(usuarioId);
-        }
-        // 2. Se não estiver logado, busca pelo Visitante (Cookie/LocalStorage)
-        else if (visitorId != null && !visitorId.trim().isEmpty()) {
-            pedidos = pedidoRepository.findByVisitorIdOrderByIdDesc(visitorId);
-        }
-
-        // 3. Converte a Entidade para DTO
-        return pedidos.stream().map(this::converterParaDTO).toList();
-    }
-
-    // 1. Método para buscar por ID
-    @Transactional(readOnly = true)
-    public PedidoDTO buscarPorId(Long id) {
-        Pedido pedido = pedidoRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Pedido não encontrado."));
-        return converterParaDTO(pedido);
-    }
-
-    // 2. Método para listar todos (Admin)
-    @Transactional(readOnly = true)
-    public List<PedidoDTO> listarTodos() {
-        // Busca todos e ordena do mais recente pro mais antigo
-        List<Pedido> pedidos = pedidoRepository.findAll(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "id"));
-        return pedidos.stream().map(this::converterParaDTO).toList();
-    }
-
-    // 3. Método para atualizar o status (Admin)
     @Transactional
-    public PedidoDTO atualizarStatus(Long id, StatusPedido novoStatus) {
-        Pedido pedido = pedidoRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Pedido não encontrado."));
+    public Pedido registrarPedidoPDV(PedidoRequestDTO dto, String loginOperador) {
+        Pedido pedido = new Pedido();
+        pedido.setDataCriacao(LocalDateTime.now());
+        pedido.setLoginOperador(loginOperador);
 
-        pedido.setStatusPedido(novoStatus);
-        pedido = pedidoRepository.save(pedido);
+        // Define a origem e status para venda direta na loja
+        pedido.setOrigem(OrigemPedido.PDV);
+        pedido.setStatus(StatusPedido.PAGO); // Se for fiado, você pode mudar para PENDENTE_PAGAMENTO se preferir
 
-        return converterParaDTO(pedido);
+        // Garante que o total não seja nulo
+        BigDecimal totalVenda = dto.getTotal() != null ? dto.getTotal() : BigDecimal.ZERO;
+        pedido.setTotal(totalVenda);
+
+        String metodo = dto.getPagamento().getMetodo();
+        BigDecimal valorEntradaInput = dto.getPagamento().getValorEntrada();
+        BigDecimal valorRecebidoInput = dto.getPagamento().getValorRecebido();
+        Integer parcelasInput = dto.getPagamento().getParcelas();
+
+        pedido.setMetodoPagamento(metodo);
+        pedido.setParcelas(parcelasInput != null && parcelasInput > 0 ? parcelasInput : 1);
+
+        BigDecimal valorEntradaSeguro = (valorEntradaInput != null) ? valorEntradaInput : BigDecimal.ZERO;
+        pedido.setValorEntrada(valorEntradaSeguro);
+
+        // Lógica de Troco (Apenas para espécie)
+        if ("especie".equalsIgnoreCase(metodo) && valorRecebidoInput != null) {
+            pedido.setValorRecebido(valorRecebidoInput);
+            pedido.setTroco(valorRecebidoInput.subtract(totalVenda).max(BigDecimal.ZERO));
+        } else {
+            pedido.setValorRecebido(totalVenda);
+            pedido.setTroco(BigDecimal.ZERO);
+        }
+
+        // Lógica de Entrada e Saldo Devedor (Fiado)
+        if ("fiado".equalsIgnoreCase(metodo)) {
+            BigDecimal saldoDevedor = totalVenda.subtract(valorEntradaSeguro);
+            pedido.setValorDevido(saldoDevedor);
+
+            int qtdParcelas = pedido.getParcelas();
+            // O SEGREDO DA DIVISÃO COM BIGDECIMAL:
+            BigDecimal valorPorParcela = saldoDevedor.divide(
+                    BigDecimal.valueOf(qtdParcelas), 2, RoundingMode.HALF_UP
+            );
+
+            List<Parcela> listaParcelas = new ArrayList<>();
+            LocalDate dataAtual = LocalDate.now();
+
+            for (int i = 1; i <= qtdParcelas; i++) {
+                Parcela parcela = new Parcela();
+                parcela.setPedido(pedido);
+                parcela.setNumeroParcela(i);
+                parcela.setValor(valorPorParcela);
+                parcela.setStatus(StatusParcela.PENDENTE);
+                parcela.setDataVencimento(dataAtual.plusMonths(i));
+                listaParcelas.add(parcela);
+            }
+            pedido.setParcelasDetalhadas(listaParcelas);
+        } else {
+            pedido.setValorDevido(BigDecimal.ZERO);
+        }
+
+        // Mapeamento de Itens
+        List<ItemPedido> itens = dto.getItens().stream().map(itemDto -> {
+            Produto produto = produtoRepository.findById(itemDto.getId())
+                    .orElseThrow(() -> new RuntimeException("Produto não encontrado"));
+
+            ItemPedido item = new ItemPedido();
+            item.setPedido(pedido);
+            item.setProduto(produto);
+            item.setQuantidade(itemDto.getQuantidade());
+
+            BigDecimal precoUnitario = itemDto.getPreco() != null ? itemDto.getPreco() : BigDecimal.ZERO;
+            item.setPrecoUnitario(precoUnitario);
+            item.setSubtotal(precoUnitario.multiply(BigDecimal.valueOf(itemDto.getQuantidade())));
+
+            return item;
+        }).collect(Collectors.toList());
+
+        pedido.setItens(itens);
+
+        // Lógica do Cliente (Busca ou Cria novo)
+        if (dto.getCliente() != null) {
+            Cliente cliente = clienteRepository.findByWhatsapp(dto.getCliente().getTelefone())
+                    .orElseGet(() -> {
+                        Cliente novo = new Cliente();
+                        novo.setNome(dto.getCliente().getNome());
+                        novo.setWhatsapp(dto.getCliente().getTelefone());
+                        novo.setUsuarioId(java.util.UUID.randomUUID().toString());
+                        return clienteRepository.save(novo);
+                    });
+            pedido.setCliente(cliente);
+
+            // Adiciona na dívida geral do cliente se for fiado
+            if ("fiado".equalsIgnoreCase(metodo)) {
+                BigDecimal dividaAtual = cliente.getSaldoDevedor() != null ? cliente.getSaldoDevedor() : BigDecimal.ZERO;
+                cliente.setSaldoDevedor(dividaAtual.add(pedido.getValorDevido()));
+            }
+        }
+
+        return pedidoRepository.save(pedido);
     }
 
-    private PedidoDTO converterParaDTO(Pedido pedido) {
-        PedidoDTO dto = new PedidoDTO();
-        dto.setId(pedido.getId());
-        dto.setDataCriacao(pedido.getDataCriacao());
-        dto.setStatusPedido(pedido.getStatusPedido());
-        dto.setFormaPagamento(pedido.getFormaPagamento());
-        dto.setTotalCobrado(pedido.getTotalCobrado());
+    @Transactional
+    public Pedido realizarCheckoutOnline(String visitorId, String usuarioId, CheckoutDTO dto) {
 
-        List<ItemPedidoDTO> itensDTO = pedido.getItens().stream().map(item -> {
-            ItemPedidoDTO itemDto = new ItemPedidoDTO();
-            itemDto.setProduto(modelMapper.map(item.getProduto(), ProdutoDTO.class));
-            itemDto.setQuantidade(item.getQuantidade());
-            itemDto.setPrecoUnitario(item.getPrecoUnitario());
-            return itemDto;
-        }).toList();
+        // 1. O carrinho agora é apenas um Pedido que estava aguardando (Status = CARRINHO)
+        // Você precisará criar esse método no PedidoRepository
+        Pedido carrinhoAtual = pedidoRepository.buscarCarrinhoAtivo(visitorId, usuarioId)
+                .orElseThrow(() -> new RuntimeException("Nenhum carrinho ativo encontrado para checkout."));
 
-        dto.setItens(itensDTO);
-        return dto;
+        if (carrinhoAtual.getItens().isEmpty()) {
+            throw new RuntimeException("Não é possível finalizar um pedido com a maleta vazia.");
+        }
+
+        // 2. Busca ou cria o Cliente
+        Cliente cliente = clienteRepository.findByWhatsapp(dto.getWhatsapp())
+                .orElseGet(() -> {
+                    Cliente novoCliente = new Cliente();
+                    novoCliente.setNome(dto.getNome());
+                    novoCliente.setWhatsapp(dto.getWhatsapp());
+                    novoCliente.setEmail(dto.getEmail());
+                    return clienteRepository.save(novoCliente);
+                });
+
+        // 3. Atualiza os dados do Pedido que já existe!
+        // Não precisamos mais copiar os itens, eles já estão lá vinculados ao 'carrinhoAtual'
+        carrinhoAtual.setCliente(cliente);
+        carrinhoAtual.setDataAtualizacao(LocalDateTime.now());
+
+        // Altera o status e configura o financeiro do checkout
+        carrinhoAtual.setStatus(StatusPedido.PENDENTE_PAGAMENTO);
+        carrinhoAtual.setMetodoPagamento(dto.getMetodoPagamento());
+        carrinhoAtual.setParcelas(dto.getParcelas());
+        carrinhoAtual.setValorRecebido(dto.getValorRecebido());
+        carrinhoAtual.setValorEntrada(dto.getValorEntrada());
+
+        // A limpeza do carrinho não é mais deletar nada, o status mudou, então ele naturalmente
+        // deixa de aparecer nas buscas de "CARRINHO" ativo para esse usuário!
+
+        return pedidoRepository.save(carrinhoAtual);
+    }
+
+    public Page<PedidoDTO> listarPedidos(String loginOperador, String metodoPagamento, LocalDate dataInicio, LocalDate dataFim, Pageable pageable) {
+        LocalDateTime inicioDia = (dataInicio != null) ? dataInicio.atStartOfDay() : null;
+        LocalDateTime fimDia = (dataFim != null) ? dataFim.atTime(LocalTime.MAX) : null;
+
+        // Aqui você pode adicionar um filtro para listar apenas status PAGO, ENVIADO, etc (ignorando CARRINHO)
+        Page<Pedido> pedidosPage = pedidoRepository.findComFiltros(loginOperador, metodoPagamento, inicioDia, fimDia, pageable);
+
+        return pedidosPage.map(p -> modelMapper.map(p, PedidoDTO.class));
+    }
+
+    public Page<PedidoDTO> listarMeusPedidos(String usuarioId, Pageable pageable) {
+        Page<Pedido> pedidos = pedidoRepository.findByUsuarioId(usuarioId, pageable);
+        return pedidos.map(pedido -> modelMapper.map(pedido, PedidoDTO.class));
     }
 }

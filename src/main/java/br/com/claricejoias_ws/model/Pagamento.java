@@ -40,6 +40,6 @@ public class Pagamento {
     private String observacao;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "venda_id") // Cria a chave estrangeira na tabela de pagamentos
-    private Venda venda;
+    @JoinColumn(name = "pedido_id") // Cria a chave estrangeira na tabela de pagamentos
+    private Pedido pedido;
 }

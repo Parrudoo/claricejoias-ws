@@ -33,7 +33,7 @@ public class KeycloakUserService {
      * Agora recebe o visitorId para aproveitar os dados do Lead!
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW) // Garante que se o banco falhar, o processo reverta com segurança
-    public void criarUsuarioCliente(String email, String senha, String nomeCompleto, String whatsapp, String visitorId) {
+    public String criarUsuarioCliente(String email, String senha, String nomeCompleto, String whatsapp) {
         String whatsappLimpo = (whatsapp != null) ? whatsapp.replaceAll("[^0-9]", "") : null;
 
         if (clienteRepository.existsByWhatsapp(whatsappLimpo)) {
@@ -45,66 +45,36 @@ public class KeycloakUserService {
         Response response = keycloak.realm(REALM_NAME).users().create(user);
         String userId = processarResposta(response, senha, "cliente");
 
-        // 3. Prepara o Cliente no banco de dados local
+        // 3. Salva o cliente oficial no PostgreSQL local
         Cliente novoCliente = new Cliente();
         novoCliente.setUsuarioId(userId);
         novoCliente.setEmail(email);
-        novoCliente.setWhatsapp(whatsappLimpo); // Ideal salvar o limpo!
+        novoCliente.setWhatsapp(whatsappLimpo);
         novoCliente.setNome(nomeCompleto);
 
-        // =========================================================
-        // 4. A MÁGICA DO FUNIL DE VENDAS E MARKETING (LEAD)
-        // =========================================================
-        Lead leadDoMarketing = null;
-
-        if (visitorId != null && !visitorId.trim().isEmpty()) {
-            // CORREÇÃO 1: Busca apenas o Lead mais RECENTE desse navegador
-            leadDoMarketing = leadRepository.findFirstByVisitorIdOrderByIdDesc(visitorId).orElse(null);
-
-            // A TRAVA DO COMPUTADOR PÚBLICO
-            // Se o lead mais recente encontrado já possui um usuarioId, significa que pertence
-            // à outra pessoa que usou esse PC. Anulamos para criar um do zero para o novo cliente.
-            if (leadDoMarketing != null && leadDoMarketing.getUsuarioId() != null) {
-                leadDoMarketing = null;
-            }
-        }
-
-        if (leadDoMarketing != null) {
-            // CENÁRIO A: O cara já era um Lead ANÔNIMO e ninguém registrou conta com esse PC ainda
-            leadDoMarketing.setUsuarioId(userId);
-            leadDoMarketing.setNome(nomeCompleto);
-            leadDoMarketing.setEmail(email);
-            leadDoMarketing.setWhatsapp(whatsappLimpo);
-
-            if (leadDoMarketing.getWhatsapp() != null) {
-                novoCliente.setWhatsapp(leadDoMarketing.getWhatsapp());
-            }
-        } else {
-            // CENÁRIO B: PC Público ou Cadastro Direto. Criamos um Lead novinho em folha!
-            leadDoMarketing = new Lead();
-
-            // CORREÇÃO 2: Mantemos o visitorId do frontend!
-            // Como o banco agora permite repetição, não precisamos mais do UUID.randomUUID().
-            // Isso garante que ele não perca o carrinho que montou na sessão atual!
-            leadDoMarketing.setVisitorId(visitorId);
-
-            leadDoMarketing.setUsuarioId(userId);
-            leadDoMarketing.setNome(nomeCompleto);
-            leadDoMarketing.setEmail(email);
-            leadDoMarketing.setWhatsapp(whatsappLimpo);
-            leadDoMarketing.setAtivo(true);
-            leadDoMarketing.setComprou(false);
-        }
-
-        // 5. Salva o Lead (seja ele atualizado ou novinho em folha)
-        leadRepository.save(leadDoMarketing);
-
-        // =========================================================
-        // 6. Salva o cliente oficial no PostgreSQL
-        // =========================================================
         clienteRepository.save(novoCliente);
 
-        System.out.println("Cliente " + nomeCompleto + " inserido no Keycloak, Cliente e na Esteira de Marketing (Lead)!");
+        System.out.println("Cliente " + nomeCompleto + " inserido no Keycloak e no PostgreSQL!");
+
+        // Retorna o ID para que quem chamou possa vincular a Leads, Pedidos, etc.
+        return userId;
+    }
+
+
+    public void vincularVisitanteAoNovoUsuario(String visitorId, String userId, Cliente cliente) {
+        if (visitorId == null) return;
+
+        leadRepository.findFirstByVisitorIdOrderByIdDesc(visitorId)
+                .ifPresent(lead -> {
+                    // Garante que o PC não pertence a outra conta logada
+                    if (lead.getUsuarioId() == null) {
+                        lead.setUsuarioId(userId);
+                        lead.setNome(cliente.getNome());
+                        lead.setWhatsapp(cliente.getWhatsapp());
+                        lead.setEmail(cliente.getEmail());
+                        leadRepository.save(lead);
+                    }
+                });
     }
 
 

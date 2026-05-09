@@ -51,8 +51,7 @@ public class AuthController {
                     dados.get("email"),
                     dados.get("senha"),
                     dados.get("nome"),
-                    dados.get("whatsapp"),
-                    visitorId
+                    dados.get("whatsapp")
             );
 
             return ResponseEntity.status(HttpStatus.CREATED).body(Collections.singletonMap("mensagem", "Conta criada com sucesso!"));

@@ -1,19 +1,18 @@
-
 package br.com.claricejoias_ws.service;
 
 import br.com.claricejoias_ws.dto.CarrinhoDTO;
 import br.com.claricejoias_ws.dto.ItemCarrinhoDTO;
 import br.com.claricejoias_ws.dto.ProdutoDTO;
-import br.com.claricejoias_ws.enums.StatusCarrinho;
-import br.com.claricejoias_ws.model.Carrinho;
-import br.com.claricejoias_ws.model.ItemCarrinho;
+import br.com.claricejoias_ws.enums.OrigemPedido;
+import br.com.claricejoias_ws.enums.StatusPedido;
+import br.com.claricejoias_ws.model.ItemPedido;
+import br.com.claricejoias_ws.model.Pedido;
 import br.com.claricejoias_ws.model.Produto;
-import br.com.claricejoias_ws.repository.CarrinhoRepository;
+import br.com.claricejoias_ws.repository.PedidoRepository;
 import br.com.claricejoias_ws.repository.ProdutoRepository;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.StaleObjectStateException;
 import org.modelmapper.ModelMapper;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.retry.annotation.Backoff;
@@ -22,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,16 +29,11 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class CarrinhoService {
 
-
-    private final CarrinhoRepository carrinhoRepository;
+    // 👇 Agora usamos o PedidoRepository!
+    private final PedidoRepository pedidoRepository;
     private final ProdutoRepository produtoRepository;
     private final ModelMapper modelMapper;
 
-    /**
-     * Ponto de entrada limpo.
-     * O @Retryable intercepta automaticamente o erro de concorrência e tenta rodar o método
-     * de novo de forma transparente, sem sujar o código com try-catch.
-     */
     @Transactional
     @Retryable(
             retryFor = {
@@ -49,78 +44,57 @@ public class CarrinhoService {
             maxAttempts = 3,
             backoff = @Backoff(delay = 150)
     )
-    public Carrinho obterOuCriarCarrinho(String visitorId, String usuarioId) {
+    public Pedido obterOuCriarCarrinho(String visitorId, String usuarioId) {
         if (isUsuarioLogado(usuarioId)) {
             return processarCarrinhoDeUsuario(visitorId, usuarioId);
         }
         return processarCarrinhoAnonimo(visitorId);
     }
 
-
-    // ========================================================================
-    // MÉTODO DE CONSULTA PURA (Não cria lixo no banco)
-    // ========================================================================
-
     @Transactional(readOnly = true)
     public CarrinhoDTO consultarCarrinhoAtual(String visitorId, String usuarioId) {
-        Optional<Carrinho> carrinhoOpt = Optional.empty();
+        Optional<Pedido> carrinhoOpt = Optional.empty();
 
         if (isUsuarioLogado(usuarioId)) {
-            carrinhoOpt = carrinhoRepository.findFirstByUsuarioIdAndStatusOrderByIdDesc(usuarioId, StatusCarrinho.ABERTO);
+            carrinhoOpt = pedidoRepository.findFirstByUsuarioIdAndStatusOrderByIdDesc(usuarioId, StatusPedido.CARRINHO);
         } else if (visitorId != null) {
-            carrinhoOpt = carrinhoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(visitorId, StatusCarrinho.ABERTO);
+            carrinhoOpt = pedidoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(visitorId, StatusPedido.CARRINHO);
         }
 
-        // Se achou, converte para DTO. Se não, retorna null (que vira 204 no Controller)
         return carrinhoOpt.map(this::convertToDTO).orElse(null);
     }
 
-    // Método auxiliar de conversão (Pode usar ModelMapper aqui se preferir)
-    private CarrinhoDTO convertToDTO(Carrinho carrinho) {
+    public CarrinhoDTO convertToDTO(Pedido pedido) {
         CarrinhoDTO dto = new CarrinhoDTO();
-        dto.setId(carrinho.getId());
-        dto.setVisitorId(carrinho.getVisitorId());
-        dto.setUsuarioId(carrinho.getUsuarioId());
+        dto.setId(pedido.getId());
+        dto.setVisitorId(pedido.getVisitorId());
+        dto.setUsuarioId(pedido.getUsuarioId());
 
-                    List<ItemCarrinhoDTO> itensDTO = carrinho.getItens().stream().map(item -> {
+        List<ItemCarrinhoDTO> itensDTO = pedido.getItens().stream().map(item -> {
             ItemCarrinhoDTO itemDto = new ItemCarrinhoDTO();
-            itemDto.setProduto(modelMapper.map(item.getProduto(), ProdutoDTO.class) );
+            itemDto.setProduto(modelMapper.map(item.getProduto(), ProdutoDTO.class));
             itemDto.setQuantidade(item.getQuantidade());
-
-
-
             return itemDto;
         }).toList();
 
         dto.setItens(itensDTO);
 
-        // Calcula o total do carrinho no servidor
         BigDecimal total = itensDTO.stream()
                 .map(i -> i.getProduto().getPreco().multiply(BigDecimal.valueOf(i.getQuantidade())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         dto.setValorTotal(total);
-
         return dto;
     }
-
-    // ========================================================================
-    // MÉTODOS PRIVADOS DE DOMÍNIO (CLEAN CODE)
-    // ========================================================================
 
     private boolean isUsuarioLogado(String usuarioId) {
         return usuarioId != null && !usuarioId.trim().isEmpty();
     }
 
-    private Carrinho processarCarrinhoDeUsuario(String visitorId, String usuarioId) {
-        // A vinculação do Lead ao Cliente já acontece no Login.
-        // Aqui o foco é exclusivamente mesclar os carrinhos!
-
-        // 1. Busca ou cria o carrinho oficial
-        Carrinho carrinhoOficial = carrinhoRepository.findFirstByUsuarioIdAndStatusOrderByIdDesc(usuarioId,StatusCarrinho.ABERTO)
+    private Pedido processarCarrinhoDeUsuario(String visitorId, String usuarioId) {
+        Pedido carrinhoOficial = pedidoRepository.findFirstByUsuarioIdAndStatusOrderByIdDesc(usuarioId, StatusPedido.CARRINHO)
                 .orElseGet(() -> criarCarrinho(null, usuarioId));
 
-        // 2. Mescla os itens caso ele tenha navegado anonimamente antes de logar
         if (visitorId != null) {
             mesclarCarrinhoAnonimoNoOficial(visitorId, carrinhoOficial);
         }
@@ -128,42 +102,46 @@ public class CarrinhoService {
         return carrinhoOficial;
     }
 
-    private Carrinho processarCarrinhoAnonimo(String visitorId) {
+    private Pedido processarCarrinhoAnonimo(String visitorId) {
         if (visitorId == null) {
             throw new IllegalArgumentException("Requisição inválida: Nenhum identificador fornecido.");
         }
-        return carrinhoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(visitorId,StatusCarrinho.ABERTO)
+        return pedidoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(visitorId, StatusPedido.CARRINHO)
                 .orElseGet(() -> criarCarrinho(visitorId, null));
     }
 
-    private Carrinho criarCarrinho(String visitorId, String usuarioId) {
-        Carrinho novo = new Carrinho();
+    private Pedido criarCarrinho(String visitorId, String usuarioId) {
+        Pedido novo = new Pedido();
         novo.setVisitorId(visitorId);
         novo.setUsuarioId(usuarioId);
-        novo.setStatus(StatusCarrinho.ABERTO);
-        return carrinhoRepository.saveAndFlush(novo);
+        novo.setStatus(StatusPedido.CARRINHO); // Define como carrinho
+        novo.setOrigem(OrigemPedido.ECOMMERCE); // Define a origem
+        novo.setDataCriacao(LocalDateTime.now());
+        // Obs: Não definimos metodo_pagamento ainda, pois é só um carrinho
+        // Dependendo de como você configurou o banco, se 'metodo_pagamento' for NOT NULL,
+        // coloque um valor padrão temporário como "PENDENTE" aqui.
+        novo.setMetodoPagamento("PENDENTE");
+        return pedidoRepository.saveAndFlush(novo);
     }
 
-    private void mesclarCarrinhoAnonimoNoOficial(String visitorId, Carrinho carrinhoOficial) {
-        carrinhoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(visitorId,StatusCarrinho.ABERTO).ifPresent(anonimo -> {
+    private void mesclarCarrinhoAnonimoNoOficial(String visitorId, Pedido carrinhoOficial) {
+        pedidoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(visitorId, StatusPedido.CARRINHO).ifPresent(anonimo -> {
 
-            // A VALIDAÇÃO DE OURO (Impede o suicídio do objeto no Hibernate)
             if (anonimo.getId().equals(carrinhoOficial.getId())) {
                 carrinhoOficial.setVisitorId(null);
-                carrinhoRepository.saveAndFlush(carrinhoOficial);
+                pedidoRepository.saveAndFlush(carrinhoOficial);
                 return;
             }
 
-            // Se forem carrinhos diferentes, fazemos a transferência normal
             transferirItens(anonimo, carrinhoOficial);
-            carrinhoRepository.delete(anonimo);
-            carrinhoRepository.flush(); // Garante a remoção da chave única do visitante
-            carrinhoRepository.saveAndFlush(carrinhoOficial);
+            pedidoRepository.delete(anonimo);
+            pedidoRepository.flush();
+            pedidoRepository.saveAndFlush(carrinhoOficial);
         });
     }
 
-    private void transferirItens(Carrinho origem, Carrinho destino) {
-        for (ItemCarrinho itemOrigem : origem.getItens()) {
+    private void transferirItens(Pedido origem, Pedido destino) {
+        for (ItemPedido itemOrigem : origem.getItens()) {
             destino.getItens().stream()
                     .filter(i -> i.getProduto().getId().equals(itemOrigem.getProduto().getId()))
                     .findFirst()
@@ -174,17 +152,17 @@ public class CarrinhoService {
         }
     }
 
-    private void adicionarNovoItemAoCarrinho(Carrinho carrinho, Produto produto, Integer quantidade) {
-        ItemCarrinho novoItem = new ItemCarrinho();
+    private void adicionarNovoItemAoCarrinho(Pedido pedido, Produto produto, Integer quantidade) {
+        ItemPedido novoItem = new ItemPedido();
         novoItem.setProduto(produto);
         novoItem.setQuantidade(quantidade);
-        novoItem.setCarrinho(carrinho);
-        carrinho.getItens().add(novoItem);
-    }
+        // Trava o preço atual da joia no momento que vai pro carrinho
+        novoItem.setPrecoUnitario(produto.getPreco() != null ? produto.getPreco() : BigDecimal.ZERO);
+        novoItem.setSubtotal(novoItem.getPrecoUnitario().multiply(BigDecimal.valueOf(quantidade)));
 
-    // ========================================================================
-    // MÉTODOS PÚBLICOS DE AÇÃO
-    // ========================================================================
+        // Usa o método utilitário que corrigimos na entidade Pedido
+        pedido.addItem(novoItem);
+    }
 
     @Transactional
     @Retryable(
@@ -196,20 +174,21 @@ public class CarrinhoService {
             maxAttempts = 3,
             backoff = @Backoff(delay = 150)
     )
-    public Carrinho adicionarItem(String visitorId, String usuarioId, Long produtoId, Integer quantidade) {
-        Carrinho carrinho = obterOuCriarCarrinho(visitorId, usuarioId);
+    public Pedido adicionarItem(String visitorId, String usuarioId, Long produtoId, Integer quantidade) {
+        Pedido carrinho = obterOuCriarCarrinho(visitorId, usuarioId);
 
-        Optional<ItemCarrinho> itemExistente = carrinho.getItens().stream()
+        Optional<ItemPedido> itemExistente = carrinho.getItens().stream()
                 .filter(item -> item.getProduto().getId().equals(produtoId))
                 .findFirst();
 
         if (itemExistente.isPresent()) {
-            ItemCarrinho item = itemExistente.get();
+            ItemPedido item = itemExistente.get();
             int novaQuantidade = item.getQuantidade() + quantidade;
             if (novaQuantidade <= 0) {
                 carrinho.getItens().remove(item);
             } else {
                 item.setQuantidade(novaQuantidade);
+                item.setSubtotal(item.getPrecoUnitario().multiply(BigDecimal.valueOf(novaQuantidade)));
             }
         } else if (quantidade > 0) {
             Produto produto = produtoRepository.findById(produtoId)
@@ -217,7 +196,7 @@ public class CarrinhoService {
             adicionarNovoItemAoCarrinho(carrinho, produto, quantidade);
         }
 
-        return carrinhoRepository.saveAndFlush(carrinho);
+        return pedidoRepository.saveAndFlush(carrinho);
     }
 
     @Transactional
@@ -230,10 +209,10 @@ public class CarrinhoService {
             maxAttempts = 3,
             backoff = @Backoff(delay = 150)
     )
-    public Carrinho removerItem(String visitorId, String usuarioId, Long produtoId) {
-        Carrinho carrinho = obterOuCriarCarrinho(visitorId, usuarioId);
+    public Pedido removerItem(String visitorId, String usuarioId, Long produtoId) {
+        Pedido carrinho = obterOuCriarCarrinho(visitorId, usuarioId);
         carrinho.getItens().removeIf(item -> item.getProduto().getId().equals(produtoId));
-        return carrinhoRepository.saveAndFlush(carrinho);
+        return pedidoRepository.saveAndFlush(carrinho);
     }
 
     @Transactional
@@ -247,8 +226,8 @@ public class CarrinhoService {
             backoff = @Backoff(delay = 150)
     )
     public void limparCarrinho(String visitorId, String usuarioId) {
-        Carrinho carrinho = obterOuCriarCarrinho(visitorId, usuarioId);
+        Pedido carrinho = obterOuCriarCarrinho(visitorId, usuarioId);
         carrinho.getItens().clear();
-        carrinhoRepository.saveAndFlush(carrinho);
+        pedidoRepository.saveAndFlush(carrinho);
     }
 }

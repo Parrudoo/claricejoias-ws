@@ -1,9 +1,8 @@
 package br.com.claricejoias_ws.controller;
 
 import br.com.claricejoias_ws.dto.CarrinhoDTO;
-import br.com.claricejoias_ws.model.Carrinho;
+import br.com.claricejoias_ws.model.Pedido;
 import br.com.claricejoias_ws.service.CarrinhoService;
-import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -14,24 +13,8 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/carrinho")
 public class CarrinhoController {
 
-    @Autowired private CarrinhoService carrinhoService;
-    @Autowired private ModelMapper modelMapper;
-
-    private CarrinhoDTO converterParaDTO(Carrinho carrinho) {
-        return modelMapper.map(carrinho, CarrinhoDTO.class);
-    }
-
-//    @GetMapping
-//    public ResponseEntity<CarrinhoDTO> obterCarrinho(
-//            @RequestHeader(value = "X-Visitor-ID", required = false) String visitorId,
-//            @AuthenticationPrincipal Jwt jwt) { // Puxa o token se o utilizador enviou
-//
-//        String usuarioId = (jwt != null) ? jwt.getSubject() : null; // Pega o ID do Keycloak
-//
-//        Carrinho carrinho = carrinhoService.obterOuCriarCarrinho(visitorId, usuarioId);
-//        return ResponseEntity.ok(converterParaDTO(carrinho));
-//    }
-
+    @Autowired
+    private CarrinhoService carrinhoService;
 
     @GetMapping
     public ResponseEntity<CarrinhoDTO> buscarMeuCarrinho(
@@ -39,6 +22,8 @@ public class CarrinhoController {
             @AuthenticationPrincipal Jwt jwt) {
 
         String usuarioId = (jwt != null) ? jwt.getSubject() : null;
+
+        // Esse método já deixamos retornando o DTO pronto direto do Service
         CarrinhoDTO carrinho = carrinhoService.consultarCarrinhoAtual(visitorId, usuarioId);
 
         if (carrinho == null) {
@@ -48,7 +33,6 @@ public class CarrinhoController {
         return ResponseEntity.ok(carrinho);
     }
 
-
     @PostMapping("/adicionar/{produtoId}")
     public ResponseEntity<CarrinhoDTO> adicionarItem(
             @RequestHeader(value = "X-Visitor-ID", required = false) String visitorId,
@@ -57,8 +41,11 @@ public class CarrinhoController {
             @RequestParam(defaultValue = "1") Integer quantidade) {
 
         String usuarioId = (jwt != null) ? jwt.getSubject() : null;
-        Carrinho carrinhoAtualizado = carrinhoService.adicionarItem(visitorId, usuarioId, produtoId, quantidade);
-        return ResponseEntity.ok(converterParaDTO(carrinhoAtualizado));
+
+        // O service agora devolve um Pedido (que atua como carrinho)
+        Pedido carrinhoAtualizado = carrinhoService.adicionarItem(visitorId, usuarioId, produtoId, quantidade);
+
+        return ResponseEntity.ok(carrinhoService.convertToDTO(carrinhoAtualizado));
     }
 
     @DeleteMapping("/remover/{produtoId}")
@@ -68,7 +55,10 @@ public class CarrinhoController {
             @PathVariable Long produtoId) {
 
         String usuarioId = (jwt != null) ? jwt.getSubject() : null;
-        Carrinho carrinhoAtualizado = carrinhoService.removerItem(visitorId, usuarioId, produtoId);
-        return ResponseEntity.ok(converterParaDTO(carrinhoAtualizado));
+
+        // O service agora devolve um Pedido
+        Pedido carrinhoAtualizado = carrinhoService.removerItem(visitorId, usuarioId, produtoId);
+
+        return ResponseEntity.ok(carrinhoService.convertToDTO(carrinhoAtualizado));
     }
 }

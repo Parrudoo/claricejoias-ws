@@ -6,7 +6,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 @Data
-public class VendaRequestDTO {
+public class PedidoRequestDTO {
     private List<ItemVendaRequestDTO> itens;
     private BigDecimal total;
     private PagamentoRequestDTO pagamento;

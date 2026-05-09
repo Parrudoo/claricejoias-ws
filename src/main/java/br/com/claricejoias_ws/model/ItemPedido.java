@@ -24,6 +24,9 @@ public class ItemPedido {
 
     private Integer quantidade;
 
+    private BigDecimal subtotal;
+
+
     // ️ ESSENCIAL: Salva o preço que o produto custava NA HORA QUE ELE CLICOU "ENVIAR PEDIDO"
     private BigDecimal precoUnitario;
 }

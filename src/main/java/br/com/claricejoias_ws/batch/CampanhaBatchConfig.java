@@ -1,6 +1,7 @@
 package br.com.claricejoias_ws.batch;
 
 import br.com.claricejoias_ws.dto.LeadDTO;
+import br.com.claricejoias_ws.enums.StatusPedido;
 import br.com.claricejoias_ws.model.Lead;
 import br.com.claricejoias_ws.repository.LeadRepository;
 import br.com.claricejoias_ws.service.WhatsAppService;
@@ -48,24 +49,37 @@ public class CampanhaBatchConfig {
 
             // Regra de Negócio: Não enviar mensagens para leads inativos ou que já compraram
             if (!lead.getAtivo() || lead.getComprou()) {
-                return null; // O Spring Batch ignora automaticamente retornos nulos (pula para o próximo)
+                return null; // O Spring Batch ignora automaticamente retornos nulos
             }
 
-            // Constrói o texto iterando sobre a lista de LeadItem
             StringBuilder resumoItens = new StringBuilder();
-            if (lead.getItens() != null && !lead.getItens().isEmpty()) {
-                lead.getItens().forEach(item -> {
-                    resumoItens.append("🔸 ").append(item.getQuantidade()).append("x ");
+            boolean temItens = false;
 
-                    // Valida se o produto existe para não quebrar o código
-                    if (item.getProduto() != null) {
-                        resumoItens.append(item.getProduto().getNome());
-                    } else {
-                        resumoItens.append("Joia Exclusiva");
-                    }
-                    resumoItens.append("\n");
-                });
-            } else {
+            // NOVA LÓGICA: Busca os itens dentro dos Pedidos (Carrinhos) do Lead
+            if (lead.getPedidos() != null && !lead.getPedidos().isEmpty()) {
+                lead.getPedidos().stream()
+                        // Filtra apenas os pedidos que representam carrinhos não finalizados
+                        .filter(pedido -> pedido.getStatus() != null &&
+                                (pedido.getStatus().equals(StatusPedido.CARRINHO) || pedido.getStatus().equals(StatusPedido.CARRINHO_ABANDONADO)))
+                        // Pega a lista de itens de cada carrinho encontrado e "achata" (flatMap) em um único fluxo
+                        .flatMap(pedido -> pedido.getItens().stream())
+                        .forEach(item -> {
+                            resumoItens.append("🔸 ").append(item.getQuantidade()).append("x ");
+
+                            // Valida se o produto existe para não quebrar o código
+                            if (item.getProduto() != null) {
+                                resumoItens.append(item.getProduto().getNome());
+                            } else {
+                                resumoItens.append("Joia Exclusiva");
+                            }
+                            resumoItens.append("\n");
+                        });
+
+                temItens = resumoItens.length() > 0;
+            }
+
+            // Se por acaso o lead se cadastrou mas nem chegou a colocar nada no carrinho
+            if (!temItens) {
                 resumoItens.append("nossas novidades!\n");
             }
 
@@ -74,8 +88,6 @@ public class CampanhaBatchConfig {
                     resumoItens.toString() +
                     "\nTemos uma oferta especial liberada para você hoje. Gostaria de conferir?";
 
-            // A formatação do "+55" foi removida daqui, pois o WhatsAppService já faz isso!
-            // Agora passamos o objeto Lead inteiro para o DTO
             return new MensagemDTO(lead, texto);
         };
     }
@@ -86,7 +98,7 @@ public class CampanhaBatchConfig {
         return mensagens -> {
             for (MensagemDTO msg : mensagens) {
                 try {
-                    // Chama o serviço passando a entidade Lead inteira
+                    // Chama o serviço passando a entidade Lead convertida em DTO
                     whatsAppService.enviarMensagemTexto(modelMapper.map(msg.getLead(), LeadDTO.class) , msg.getTexto(),"BATCH");
 
                     // Pausa de 30 segundos mantida APENAS para o processo em lote

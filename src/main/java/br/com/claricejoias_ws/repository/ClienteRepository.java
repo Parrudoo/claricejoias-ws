@@ -15,7 +15,7 @@ public interface ClienteRepository extends JpaRepository<Cliente, Long> {
 
 
     @Query("SELECT DISTINCT c FROM Cliente c " +
-            "JOIN c.vendas v " +
+            "JOIN c.pedidos v " +
             "JOIN v.parcelasDetalhadas p " +
             "WHERE p.status = :statusPendente AND p.dataVencimento < CURRENT_DATE")
     List<Cliente> findClientesInadimplentes(@Param("statusPendente") StatusParcela statusPendente);

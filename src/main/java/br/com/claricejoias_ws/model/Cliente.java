@@ -36,7 +36,7 @@ public class Cliente {
     private BigDecimal saldoDevedor = BigDecimal.ZERO;
 
     @OneToMany(mappedBy = "cliente", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Venda> vendas = new ArrayList<>();
+    private List<Pedido> pedidos = new ArrayList<>();
 
     @OneToMany(mappedBy = "cliente", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<HistoricoCobranca> historicoCobrancas = new ArrayList<>();

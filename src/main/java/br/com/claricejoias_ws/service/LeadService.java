@@ -1,15 +1,10 @@
 package br.com.claricejoias_ws.service;
 
-import br.com.claricejoias_ws.dto.LeadDTO;
-import br.com.claricejoias_ws.dto.LeadItemDTO;
-import br.com.claricejoias_ws.dto.LeadRequestDTO;
-import br.com.claricejoias_ws.dto.ProdutoDTO;
-import br.com.claricejoias_ws.enums.StatusCarrinho;
+import br.com.claricejoias_ws.dto.*;
 import br.com.claricejoias_ws.enums.StatusDisparo;
 import br.com.claricejoias_ws.enums.StatusPedido;
 import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.*;
-import br.com.claricejoias_ws.repository.CarrinhoRepository;
 import br.com.claricejoias_ws.repository.FilaDisparoRepository;
 import br.com.claricejoias_ws.repository.LeadRepository;
 import br.com.claricejoias_ws.repository.PedidoRepository;
@@ -25,7 +20,6 @@ import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +27,7 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -42,16 +37,14 @@ public class LeadService {
     private final KeycloakUserService keycloakUserService;
     private final ModelMapper modelMapper;
     private final EvolutionApiService evolutionApiService;
-    private final CarrinhoRepository carrinhoRepository;
     private final FilaDisparoRepository filaDisparoRepository;
     private final PedidoRepository pedidoRepository;
     private final CarrinhoService carrinhoService;
 
-    // CACHE TEMPORÁRIO PARA OS CÓDIGOS OTP (WhatsApp -> Código)
     private final Map<String, String> otpCache = new ConcurrentHashMap<>();
 
     // ==========================================
-    // ETAPA 1: CAPTAÇÃO VIA ISCA DIGITAL (Guia de Medidas)
+    // ETAPA 1: CAPTAÇÃO VIA ISCA DIGITAL
     // ==========================================
 
     public boolean deveMostrarBotaoGuia(String visitorId) {
@@ -66,81 +59,58 @@ public class LeadService {
         String whatsappLimpo = dto.getWhatsapp().replaceAll("[^0-9]", "");
 
         if (whatsappLimpo.length() < 10) {
-            throw new RegraNegocioException("Número de WhatsApp incompleto. Certifique-se de incluir o DDD e o 9.");
+            throw new RegraNegocioException("Número de WhatsApp incompleto.");
         }
 
-        String idNavegador = (visitorId != null && !visitorId.trim().isEmpty())
-                ? visitorId
-                : UUID.randomUUID().toString();
+        String idNavegador = (visitorId != null && !visitorId.trim().isEmpty()) ? visitorId : UUID.randomUUID().toString();
 
-        Lead lead = null;
+        Lead lead = repository.findFirstByVisitorIdOrderByIdDesc(idNavegador).orElse(null);
 
-        // 1. Busca segura pelo Lead mais recente deste navegador
-        if (visitorId != null && !visitorId.trim().isEmpty()) {
-            lead = repository.findFirstByVisitorIdOrderByIdDesc(idNavegador).orElse(null);
-
-            // 2. A TRAVA DO COMPUTADOR PÚBLICO
-            // Se o lead encontrado já pertence a uma conta oficial (tem usuarioId),
-            // nós não podemos sobrescrever os dados dele. Anulamos para forçar a criação de um novo.
-            if (lead != null && lead.getUsuarioId() != null) {
-                lead = null;
-            }
+        if (lead != null && lead.getUsuarioId() != null) {
+            lead = null; // Proteção para computador público
         }
 
-        // 3. Criação ou Atualização
         if (lead == null) {
             lead = new Lead();
-            // Mantemos o idNavegador para não perder o vínculo com o carrinho atual!
             lead.setVisitorId(idNavegador);
             lead.setAtivo(true);
             lead.setComprou(false);
         }
 
-        // Atualiza os dados capturados na landing page / e-book
         lead.setNome(dto.getNome());
         lead.setWhatsapp(whatsappLimpo);
-
-        if (dto.getEmail() != null && !dto.getEmail().isEmpty()) {
-            lead.setEmail(dto.getEmail());
-        }
+        if (dto.getEmail() != null) lead.setEmail(dto.getEmail());
 
         repository.save(lead);
     }
 
     // ==========================================
-    // ETAPA 2: CHECKOUT PREMIUM (VERIFICAÇÃO OTP)
+    // ETAPA 2: CHECKOUT (OTP E CONVERSÃO)
     // ==========================================
 
-    // PASSO A: Gera o código e envia via Evolution API
     public void solicitarCodigoOtp(String whatsapp) {
         String whatsappLimpo = whatsapp.replaceAll("[^0-9]", "");
-
-        // 1. Gera o OTP e salva no Cache do servidor (Validade de 5 minutos, por exemplo)
         String otp = String.format("%06d", new Random().nextInt(999999));
         otpCache.put(whatsappLimpo, otp);
 
-        // 2. Monta a mensagem
-        String mensagem = String.format("🔒 Seu código de segurança Clarice Joias é: *%s*\n\nNão compartilhe este código com ninguém.", otp);
+        String mensagem = String.format("🔒 Seu código de segurança Clarice Joias é: *%s*", otp);
 
-        // 3. Salva na Fila (Apenas anota no banco, NÃO envia ainda)
         FilaDisparo fila = new FilaDisparo();
-        fila.setNumeroDestino(whatsappLimpo); // Se não tiver o Lead ainda, salva só o número
+        fila.setNumeroDestino(whatsappLimpo);
         fila.setTexto(mensagem);
-        fila.setTipo("OTP"); // Dica: Prioridade máxima
+        fila.setTipo("OTP");
         fila.setStatus(StatusDisparo.PENDENTE);
         fila.setDataCriacao(LocalDateTime.now());
 
         filaDisparoRepository.save(fila);
-        System.out.println("OTP de " + whatsappLimpo + " entrou na fila de espera.");
     }
 
-    // PASSO B: Valida se o que o cliente digitou bate com a memória
     public boolean validarCodigoOtp(String whatsapp, String codigoInformado) {
         String whatsappLimpo = whatsapp.replaceAll("[^0-9]", "");
         String codigoSalvo = otpCache.get(whatsappLimpo);
 
         if (codigoSalvo != null && codigoSalvo.equals(codigoInformado)) {
-            otpCache.remove(whatsappLimpo); // Limpa o código para não ser usado duas vezes
+            otpCache.remove(whatsappLimpo);
             return true;
         }
         return false;
@@ -148,172 +118,200 @@ public class LeadService {
 
     @Transactional
     @Retryable(
-            retryFor = {
-                    DataIntegrityViolationException.class,
-                    ObjectOptimisticLockingFailureException.class,
-                    StaleObjectStateException.class
-            },
+            retryFor = {DataIntegrityViolationException.class, ObjectOptimisticLockingFailureException.class, StaleObjectStateException.class},
             maxAttempts = 3,
             backoff = @Backoff(delay = 150)
     )
-    public Lead processarNovoLead(LeadRequestDTO dto, String visitorId, String usuarioId) {
+    public Lead processarNovoLead(LeadRequestDTO dto, String visitorId, String usuarioIdOrigem) {
         String whatsappLimpo = dto.getWhatsapp().replaceAll("[^0-9]", "");
-        boolean estaLogado = (usuarioId != null && !usuarioId.isEmpty());
+        boolean estaLogado = (usuarioIdOrigem != null && !usuarioIdOrigem.trim().isEmpty());
 
-        // =========================================================
-        // 1. SALVA O LEAD PRIMEIRO (Para o pedido ter a quem pertencer)
-        // =========================================================
-        Lead lead = repository.findByWhatsapp(whatsappLimpo).orElseGet(Lead::new);
+        String finalUsuarioId = usuarioIdOrigem;
+        String senhaGerada = null; // Guarda a senha caso a conta seja criada no checkout
+
+        // 1. Cria a conta se necessário
+        if (dto.isCriarConta() && !estaLogado) {
+            senhaGerada = String.format("%06d", new Random().nextInt(999999));
+            String emailKeycloak = whatsappLimpo + "@claricejoias.com.br";
+
+            // Retorna o ID gerado pelo Keycloak
+            finalUsuarioId = keycloakUserService.criarUsuarioCliente(emailKeycloak, senhaGerada, dto.getNome(), whatsappLimpo);
+        }
+
+        // 2. BUSCA INTELIGENTE DO LEAD (Com a trava do PC público)
+        Lead lead = obterOuPromoverLeadSeguro(whatsappLimpo, visitorId, finalUsuarioId);
+
+        // Atualiza os dados do Lead
         lead.setWhatsapp(whatsappLimpo);
         lead.setNome(dto.getNome());
         lead.setAtivo(true);
-        lead.setComprou(false);
-
         if (visitorId != null) lead.setVisitorId(visitorId);
-        if (estaLogado) lead.setUsuarioId(usuarioId);
+        if (finalUsuarioId != null) lead.setUsuarioId(finalUsuarioId);
 
-        lead = repository.save(lead); // Salva e gera o ID do Lead
+        lead = repository.save(lead); // <--- O ÚNICO SAVE DO LEAD
 
-        // =========================================================
-        // 2. CONVERTE O CARRINHO EM PEDIDO
-        // =========================================================
-        Carrinho carrinho = carrinhoService.obterOuCriarCarrinho(visitorId, usuarioId);
+        // 3. Busca o "Carrinho" (que já é um Pedido)
+        // CORREÇÃO AQUI: Usamos o usuarioIdOrigem, pois foi com ele (ou com o visitorId) que o carrinho foi montado!
+        Pedido carrinhoPedido = carrinhoService.obterOuCriarCarrinho(visitorId, usuarioIdOrigem);
 
-        if (carrinho.getItens().isEmpty()) {
-            throw new RegraNegocioException("Não é possível processar a compra: O carrinho está vazio.");
+        if (carrinhoPedido.getItens().isEmpty()) {
+            throw new RegraNegocioException("O carrinho está vazio.");
         }
 
-        Pedido novoPedido = new Pedido();
-        novoPedido.setLead(lead);
-        novoPedido.setVisitorId(visitorId);
-        novoPedido.setUsuarioId(usuarioId);
+        // 4. Atualiza o Pedido existente
+        carrinhoPedido.setLead(lead);
+        carrinhoPedido.setStatus(StatusPedido.AGUARDANDO_WHATSAPP);
+        carrinhoPedido.setMetodoPagamento(dto.getMetodoPagamento() != null ? dto.getMetodoPagamento() : "PIX");
+        carrinhoPedido.setDataAtualizacao(LocalDateTime.now());
 
-        // Certifique-se de que o seu LeadRequestDTO tenha o campo formaPagamento que vem do React!
-//        novoPedido.setFormaPagamento(dto.getFormaPagamento());
-        novoPedido.setStatusPedido(StatusPedido.AGUARDANDO_WHATSAPP);
-
-        BigDecimal total = BigDecimal.ZERO;
-
-        // Transfere os itens congelando o preço
-        for (ItemCarrinho ic : carrinho.getItens()) {
-            ItemPedido ip = new ItemPedido();
-            ip.setProduto(ic.getProduto());
-            ip.setQuantidade(ic.getQuantidade());
-            ip.setPrecoUnitario(ic.getProduto().getPreco()); // Congela o preço
-
-            novoPedido.addItem(ip);
-            total = total.add(ip.getPrecoUnitario().multiply(BigDecimal.valueOf(ip.getQuantidade())));
+        // BÔNUS: Se a conta acabou de ser criada, aproveita para amarrar o pedido ao ID do usuário do Keycloak
+        if (finalUsuarioId != null) {
+            carrinhoPedido.setUsuarioId(finalUsuarioId);
         }
 
-        novoPedido.setTotalCobrado(total);
-        pedidoRepository.save(novoPedido); // Salva e gera o ID do Pedido
+        // O total já é calculado pelo CarrinhoService ou no @PrePersist do Pedido
+        pedidoRepository.save(carrinhoPedido);
 
-        // =========================================================
-        // 3. LIMPA O CARRINHO
-        // =========================================================
-        carrinhoService.limparCarrinho(visitorId, usuarioId);
-
-        // =========================================================
-        // 4. NOTIFICAÇÕES (AGORA COM O NÚMERO DO PEDIDO!)
-        // =========================================================
-        if (dto.isCriarConta() && !estaLogado) {
-            String senhaAleatoria = String.format("%06d", new Random().nextInt(999999));
-            String emailKeycloak = whatsappLimpo + "@claricejoias.com.br";
-
-            keycloakUserService.criarUsuarioCliente(emailKeycloak, senhaAleatoria, dto.getNome(), whatsappLimpo, visitorId);
-
-            String mensagemConta = String.format(
-                    "Olá *%s*! 💎 Recebemos seu pedido *#%d*!\n\n" +
-                            "Para acompanhar o status depois, criamos um acesso rápido para você:\n" +
-                            "👤 Usuário: *%s*\n🔑 Senha: *%s*\n\n" +
-                            "Nossa equipe já vai te atender por aqui para finalizar os detalhes da forma de pagamento: *%s*!",
-                    dto.getNome(), novoPedido.getId(), whatsappLimpo, senhaAleatoria, "PIX"
-            );
-            evolutionApiService.enviarMensagemTexto(whatsappLimpo, mensagemConta);
-
-        } else {
-            String mensagemPedido = String.format(
-                    "Olá *%s*! 💎 Recebemos seu pedido *#%d* com sucesso!\n\n" +
-                            "Nossa equipe já vai te atender por aqui para finalizar os detalhes!",
-                    dto.getNome(), novoPedido.getId()
-            );
-            evolutionApiService.enviarMensagemTexto(whatsappLimpo, mensagemPedido);
-        }
+        // 5. Fluxo de notificações (Limpamos a assinatura do método para receber apenas o necessário)
+        enviarNotificacaoFinal(dto, lead, carrinhoPedido, whatsappLimpo, senhaGerada);
 
         return lead;
     }
+
+    // Método de notificação ajustado para usar a 'senhaGerada' e saber se envia ou não as credenciais
+    private void enviarNotificacaoFinal(LeadRequestDTO dto, Lead lead, Pedido pedido, String whatsapp, String senhaGerada) {
+        if (senhaGerada != null) {
+            String msg = String.format("Olá *%s*! 💎 Pedido *#%d* recebido!\n👤 Usuário: *%s*\n🔑 Senha: *%s*",
+                    dto.getNome(), pedido.getId(), whatsapp, senhaGerada);
+            evolutionApiService.enviarMensagemTexto(whatsapp, msg);
+        } else {
+            String msg = String.format("Olá *%s*! 💎 Recebemos seu pedido *#%d* com sucesso!", dto.getNome(), pedido.getId());
+            evolutionApiService.enviarMensagemTexto(whatsapp, msg);
+        }
+    }
+
+
+    private Lead obterOuPromoverLeadSeguro(String whatsapp, String visitorId, String usuarioId) {
+        // 1. Prioridade Máxima: O WhatsApp (Garante que é a mesma pessoa, independente do PC)
+        Optional<Lead> leadPorWhatsapp = repository.findByWhatsapp(whatsapp);
+        if (leadPorWhatsapp.isPresent()) {
+            return leadPorWhatsapp.get();
+        }
+
+        // 2. Se o WhatsApp é novo, vamos ver se temos um rastro anônimo neste navegador
+        if (visitorId != null && !visitorId.trim().isEmpty()) {
+            Lead leadDoNavegador = repository.findFirstByVisitorIdOrderByIdDesc(visitorId).orElse(null);
+
+            if (leadDoNavegador != null) {
+                // =========================================================
+                //  A TRAVA DO COMPUTADOR PÚBLICO
+                // =========================================================
+                if (leadDoNavegador.getUsuarioId() != null && !leadDoNavegador.getUsuarioId().equals(usuarioId)) {
+                    // CENÁRIO: Outra pessoa já logou ou criou conta neste PC antes!
+                    // Ação: Ignoramos o rastro antigo para não misturar os dados e criamos um novo.
+                    return new Lead();
+                } else {
+                    // CENÁRIO: É apenas um visitante anônimo que acabou de decidir comprar/criar conta.
+                    // Ação: "Promovemos" este Lead, mantendo o histórico dele.
+                    return leadDoNavegador;
+                }
+            }
+        }
+
+        // 3. Se não achou WhatsApp e não tem rastro válido, cria um do zero.
+        return new Lead();
+    }
+
+
 
     // ==========================================
     // ETAPA 3: PAINEL ADMINISTRATIVO (CRUD)
     // ==========================================
 
-    @Transactional
-    public Lead salvar(Lead lead) {
-        return repository.save(lead);
-    }
-
     public Page<LeadDTO> listarTodos(Pageable pageable) {
-        Page<Lead> leadsPage = repository.findAll(pageable);
-
-        return leadsPage.map(lead -> {
-            LeadDTO dto = modelMapper.map(lead, LeadDTO.class);
-            Optional<Carrinho> carrinhoDoLead = Optional.empty();
-
-            if (lead.getUsuarioId() != null) {
-                carrinhoDoLead = carrinhoRepository.findFirstByUsuarioIdAndStatusOrderByIdDesc(lead.getUsuarioId(),StatusCarrinho.ABERTO);
-            }
-            if (carrinhoDoLead.isEmpty() && lead.getVisitorId() != null) {
-                carrinhoDoLead = carrinhoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(lead.getVisitorId(),StatusCarrinho.ABERTO);
-            }
-
-            carrinhoDoLead.ifPresent(carrinho -> {
-                List<LeadItemDTO> itensDoCarrinho = carrinho.getItens().stream().map(item -> {
-                    LeadItemDTO itemDto = new LeadItemDTO();
-                    itemDto.setId(item.getProduto().getId());
-                    itemDto.setProduto(modelMapper.map(item.getProduto(), ProdutoDTO.class));
-                    itemDto.setQuantidade(item.getQuantidade());
-                    return itemDto;
-                }).toList();
-                dto.setItens(itensDoCarrinho);
-            });
-
-            return dto;
-        });
+        return repository.findAll(pageable).map(this::montarLeadDTO);
     }
 
     public LeadDTO buscarPorId(Long id) {
-        // 1. Busca o Lead (objeto simples)
-        Lead lead = repository.findById(id)
-                .orElseThrow(() -> new RegraNegocioException("Lead não encontrado"));
+        Lead lead = repository.findById(id).orElseThrow(() -> new RegraNegocioException("Lead não encontrado"));
+        return montarLeadDTO(lead);
+    }
 
-        // 2. Converte o Lead para DTO
-        LeadDTO dto = modelMapper.map(lead, LeadDTO.class);
+    private LeadDTO montarLeadDTO(Lead lead) {
+        if (lead == null) return null;
 
-        // 3. Busca o Carrinho
-        Optional<Carrinho> carrinhoDoLead = Optional.empty();
+        // 1. Instanciamos o DTO e mapeamos os campos básicos manualmente
+        LeadDTO dto = new LeadDTO();
+        dto.setId(lead.getId());
+        dto.setNome(lead.getNome());
+        dto.setWhatsapp(lead.getWhatsapp());
+        dto.setEmail(lead.getEmail());
+        dto.setAtivo(lead.getAtivo());
+        dto.setComprou(lead.getComprou());
 
-        if (lead.getUsuarioId() != null) {
-            carrinhoDoLead = carrinhoRepository.findFirstByUsuarioIdAndStatusOrderByIdDesc(lead.getUsuarioId(),StatusCarrinho.ABERTO);
+        // 2. Mapeamos os Itens (extraindo do Pedido que é um Carrinho)
+        if (lead.getPedidos() != null) {
+            lead.getPedidos().stream()
+//                    .filter(p -> p.getStatus() != null &&
+//                            (p.getStatus().equals(StatusPedido.CARRINHO) || p.getStatus().equals(StatusPedido.CARRINHO_ABANDONADO)))
+                    .findFirst() // Pegamos o carrinho mais recente do Lead
+                    .ifPresent(pedido -> {
+                        List<LeadItemDTO> itensDTO = pedido.getItens().stream().map(item -> {
+                            LeadItemDTO itemDto = new LeadItemDTO();
+
+                            // Vinculamos o ID do produto e a quantidade
+                            itemDto.setId(item.getProduto().getId());
+                            itemDto.setQuantidade(item.getQuantidade());
+
+                            // Mapeamento manual do ProdutoDTO para evitar ModelMapper aqui também
+                            if (item.getProduto() != null) {
+                                Produto prod = item.getProduto();
+                                ProdutoDTO prodDto = new ProdutoDTO();
+                                prodDto.setId(prod.getId());
+                                prodDto.setNome(prod.getNome());
+                                prodDto.setPreco(item.getPrecoUnitario()); // Usamos o preço travado no item
+                                // Se você precisar de imagens no painel, mapeie aqui:
+                                prodDto.setImagens(prod.getImagens());
+
+                                itemDto.setProduto(prodDto);
+                            }
+                            return itemDto;
+                        }).collect(Collectors.toList());
+
+                        dto.setItens(itensDTO);
+                    });
         }
-        if (carrinhoDoLead.isEmpty() && lead.getVisitorId() != null) {
-            carrinhoDoLead = carrinhoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(lead.getVisitorId(),StatusCarrinho.ABERTO);
+
+        // 3. Mapeamos o histórico de disparos manualmente
+        if (lead.getHistoricoDisparos() != null) {
+            List<HistoricoDisparoDTO> disparosDTO = lead.getHistoricoDisparos().stream().map(h -> {
+                HistoricoDisparoDTO hDto = new HistoricoDisparoDTO();
+                hDto.setId(h.getId());
+//                hDto.setMensagem(h.getMensagem());
+                hDto.setDataHoraDisparo(h.getDataHoraDisparo());
+//                hDto.setTipo(h.getTipo());
+                return hDto;
+            }).collect(Collectors.toList());
+
+            dto.setHistoricoDisparos(disparosDTO);
         }
 
-        // 4. Preenche os itens se o carrinho existir
-        carrinhoDoLead.ifPresent(carrinho -> {
-            List<LeadItemDTO> itensDoCarrinho = carrinho.getItens().stream().map(item -> {
-                LeadItemDTO itemDto = new LeadItemDTO();
-                itemDto.setId(item.getProduto().getId());
-                itemDto.setProduto(modelMapper.map(item.getProduto(), ProdutoDTO.class));
-                itemDto.setQuantidade(item.getQuantidade());
-                return itemDto;
-            }).toList();
-
-            dto.setItens(itensDoCarrinho);
-        });
-
-        // 5. Retorna o DTO preenchido
         return dto;
+    }
+
+    @Transactional
+    public Lead marcarComoComprado(Long leadId) {
+        Lead lead = repository.findById(leadId).orElseThrow(() -> new RuntimeException("Lead não encontrado"));
+
+        // Busca o pedido que era o carrinho e marca como pago
+        pedidoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(lead.getVisitorId(), StatusPedido.CARRINHO)
+                .ifPresent(p -> {
+                    p.setStatus(StatusPedido.PAGO);
+                    pedidoRepository.save(p);
+                });
+
+        lead.setComprou(true);
+        return repository.save(lead);
     }
 
     @Transactional
@@ -322,36 +320,5 @@ public class LeadService {
             lead.setAtivo(!lead.getAtivo());
             return repository.save(lead);
         }).orElseThrow(() -> new RegraNegocioException("Lead não encontrado com o ID: " + id));
-    }
-
-    @Transactional // Garante que se der erro no carrinho, o lead não salva (rollback)
-    public Lead marcarComoComprado(Long leadId) {
-        // 1. Busca o Lead
-        Lead lead = repository.findById(leadId)
-                .orElseThrow(() -> new RuntimeException("Lead não encontrado com o ID: " + leadId));
-
-        Optional<Carrinho> carrinhoAbertoOpt;
-
-        if (lead.getUsuarioId() != null){
-          carrinhoAbertoOpt   = carrinhoRepository.findFirstByUsuarioIdAndStatusOrderByIdDesc(lead.getUsuarioId(), StatusCarrinho.ABERTO);
-        }else{
-            carrinhoAbertoOpt = carrinhoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(lead.getVisitorId(), StatusCarrinho.ABERTO);
-        }
-
-
-        // 3. Se encontrar o carrinho aberto, marca como pago
-        if (carrinhoAbertoOpt.isPresent()) {
-            Carrinho carrinho = carrinhoAbertoOpt.get();
-            carrinho.setStatus(StatusCarrinho.PAGO);
-            carrinhoRepository.save(carrinho);
-        } else {
-            // Aqui você decide a regra: Lança exceção se não tiver carrinho?
-            // Ou apenas marca o lead como comprado assim mesmo?
-            // throw new RuntimeException("Nenhum carrinho em aberto encontrado para o Lead.");
-        }
-
-        // 4. Atualiza o Lead (você vai precisar adicionar o campo 'comprou' na entidade Lead)
-        lead.setComprou(true);
-        return repository.save(lead);
     }
 }

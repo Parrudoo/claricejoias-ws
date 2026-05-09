@@ -1,11 +1,5 @@
 package br.com.claricejoias_ws.dto;
 
-import br.com.claricejoias_ws.model.HistoricoCobranca;
-import br.com.claricejoias_ws.model.Pagamento;
-import br.com.claricejoias_ws.model.Venda;
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
-import jakarta.persistence.OneToMany;
 import lombok.Getter;
 import lombok.Setter;
 

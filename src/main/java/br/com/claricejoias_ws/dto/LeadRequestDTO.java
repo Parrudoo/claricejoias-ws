@@ -10,6 +10,7 @@ public class LeadRequestDTO {
     private String email;
     private boolean criarConta;
     private String senha;
+    private String metodoPagamento;
     private List<ItemRequestDTO> itens;
 
     // Classe interna pública e estática

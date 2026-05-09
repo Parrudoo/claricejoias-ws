@@ -1,91 +1,88 @@
 package br.com.claricejoias_ws.controller;
 
+import br.com.claricejoias_ws.dto.CheckoutDTO;
 import br.com.claricejoias_ws.dto.PedidoDTO;
-import br.com.claricejoias_ws.enums.StatusPedido;
+import br.com.claricejoias_ws.dto.PedidoRequestDTO;
+import br.com.claricejoias_ws.model.Pedido;
+import br.com.claricejoias_ws.service.AutenticacaoService;
 import br.com.claricejoias_ws.service.PedidoService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-import java.util.Map;
+import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/api/pedidos")
-@Tag(name = "Pedidos", description = "Endpoints para visualização do histórico e gestão de pedidos")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*") // Ajuste conforme seu ambiente
+@Tag(name = "Pedidos", description = "Endpoints unificados para gerenciamento de Vendas (PDV) e E-commerce")
 public class PedidoController {
 
     private final PedidoService pedidoService;
+    private final AutenticacaoService autenticacaoService;
 
-    // ==========================================================
-    // ÁREA DO CLIENTE
-    // ==========================================================
+    @Operation(summary = "Registrar nova venda (PDV)", description = "Utilizado pelo operador para registrar uma venda manual realizada fisicamente na loja.")
+    @PostMapping("/pdv")
+    public ResponseEntity<?> registrarPedidoPDV(@RequestBody PedidoRequestDTO dto) {
+        try {
+            Pedido pedidoSalvo = pedidoService.registrarPedidoPDV(dto, autenticacaoService.getUsername());
+            return ResponseEntity.status(HttpStatus.CREATED).body(pedidoSalvo);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
+    }
 
-    @GetMapping("/meus-pedidos")
-    @Operation(summary = "Listar meus pedidos", description = "Retorna o histórico de compras do usuário logado ou do visitante anônimo.")
-    public ResponseEntity<List<PedidoDTO>> buscarMeusPedidos(
+    @Operation(summary = "Finalizar pedido online (Checkout)", description = "Transforma um carrinho ativo do e-commerce em um pedido finalizado.")
+    @PostMapping("/checkout")
+    public ResponseEntity<?> finalizarPedido(
             @RequestHeader(value = "X-Visitor-ID", required = false) String visitorId,
-            @AuthenticationPrincipal Jwt jwt) {
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestBody CheckoutDTO checkoutDTO) {
 
-        String usuarioId = (jwt != null) ? jwt.getSubject() : null;
+        try {
+            String usuarioId = (jwt != null) ? jwt.getSubject() : null;
+            Pedido pedidoFinalizado = pedidoService.realizarCheckoutOnline(visitorId, usuarioId, checkoutDTO);
+            return ResponseEntity.ok(pedidoFinalizado);
 
-        if ((visitorId == null || visitorId.isBlank()) && (usuarioId == null || usuarioId.isBlank())) {
-            return ResponseEntity.badRequest().build();
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
         }
-
-        List<PedidoDTO> pedidos = pedidoService.buscarMeusPedidos(visitorId, usuarioId);
-
-        if (pedidos.isEmpty()) {
-            return ResponseEntity.noContent().build();
-        }
-
-        return ResponseEntity.ok(pedidos);
     }
 
-    @GetMapping("/{id}")
-    @Operation(summary = "Buscar pedido por ID", description = "Retorna os detalhes de um pedido específico.")
-    public ResponseEntity<PedidoDTO> buscarPorId(@PathVariable Long id) {
-        PedidoDTO pedido = pedidoService.buscarPorId(id);
-        return ResponseEntity.ok(pedido);
-    }
-
-    // ==========================================================
-    // ÁREA ADMINISTRATIVA (Painel da Vendedora)
-    // ==========================================================
-
+    @Operation(summary = "Listar pedidos", description = "Retorna o histórico de pedidos consolidados.")
     @GetMapping
-    @Operation(summary = "Listar todos os pedidos", description = "Retorna todos os pedidos da loja para o painel administrativo.")
-    public ResponseEntity<List<PedidoDTO>> listarTodos() {
-        // Futuramente você pode adicionar paginação (Pageable) aqui se a loja crescer muito
-        List<PedidoDTO> pedidos = pedidoService.listarTodos();
+    public ResponseEntity<Page<PedidoDTO>> listarPedidos(
+            @RequestParam(required = false) String loginOperador,
+            @RequestParam(required = false) String metodoPagamento,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim,
+            @PageableDefault(page = 0, size = 20, sort = "id", direction = Sort.Direction.DESC) Pageable pageable) {
 
-        if (pedidos.isEmpty()) {
-            return ResponseEntity.noContent().build();
-        }
-
-        return ResponseEntity.ok(pedidos);
+        return ResponseEntity.ok(pedidoService.listarPedidos(loginOperador, metodoPagamento, dataInicio, dataFim, pageable));
     }
 
-    @PutMapping("/{id}/status")
-    @Operation(summary = "Atualizar status", description = "Muda o status do pedido (ex: de AGUARDANDO_WHATSAPP para CONCLUIDO).")
-    public ResponseEntity<PedidoDTO> atualizarStatus(
-            @PathVariable Long id,
-            @RequestBody StatusUpdateDTO payload) {
 
-        PedidoDTO pedidoAtualizado = pedidoService.atualizarStatus(id, payload.getStatusPedido());
-        return ResponseEntity.ok(pedidoAtualizado);
-    }
 
-    // DTO interno apenas para receber o status via JSON no body do PUT
-    @Data
-    public static class StatusUpdateDTO {
-        private StatusPedido statusPedido;
+    @Operation(summary = "Listar meus pedidos", description = "Retorna o histórico de pedidos do cliente logado de forma paginada.")
+    @GetMapping("/meus-pedidos")
+    public ResponseEntity<Page<PedidoDTO>> listarMeusPedidos(
+            @AuthenticationPrincipal Jwt jwt,
+            @PageableDefault(page = 0, size = 10, sort = "id", direction = Sort.Direction.DESC) Pageable pageable) {
+
+        String usuarioId = jwt.getSubject();
+
+        Page<PedidoDTO> meusPedidos = pedidoService.listarMeusPedidos(usuarioId, pageable);
+        return ResponseEntity.ok(meusPedidos);
     }
 }
