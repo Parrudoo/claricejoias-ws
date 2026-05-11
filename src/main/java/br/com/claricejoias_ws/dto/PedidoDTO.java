@@ -10,8 +10,9 @@ import java.util.List;
 public class PedidoDTO {
     private Long id;
     private LocalDateTime dataCriacao;
-    private StatusPedido statusPedido; // ex: AGUARDANDO_WHATSAPP, CONCLUIDO
+    private StatusPedido statusPedido;
     private String formaPagamento;
-    private BigDecimal totalCobrado; // Total salvo no momento da compra
+    private BigDecimal totalCobrado;
     private List<ItemPedidoDTO> itens;
+    private String loginOperador;
 }

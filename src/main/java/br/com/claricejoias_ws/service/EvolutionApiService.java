@@ -24,7 +24,7 @@ public class EvolutionApiService {
 
     public void enviarMensagemTexto(String numeroDestino, String mensagem) {
         try {
-            RestTemplate restTemplate = new RestTemplate();
+
             String url = evolutionUrl + "/message/sendText/" + instancia;
 
             HttpHeaders headers = new HttpHeaders();

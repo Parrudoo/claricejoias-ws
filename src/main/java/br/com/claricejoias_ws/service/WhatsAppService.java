@@ -68,7 +68,7 @@ public class WhatsAppService {
             throw new RegraNegocioException("Operação negada: " + lead.getNome() + " já possui uma mensagem na fila aguardando disparo.");
         }
 
-//        validarCooldown(modelMapper.map(lead,Lead.class));
+        validarCooldown(modelMapper.map(lead,Lead.class));
 
         FilaDisparo fila = new FilaDisparo();
         fila.setLead(modelMapper.map(lead,Lead.class));
