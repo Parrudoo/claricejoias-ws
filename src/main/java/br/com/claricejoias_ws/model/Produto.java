@@ -1,5 +1,6 @@
 package br.com.claricejoias_ws.model;
 
+import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.Getter;
@@ -49,5 +50,16 @@ public class Produto {
 
     public void adicionarImagem(String caminho) {
         this.imagens.add(caminho);
+    }
+
+    public void diminuirEstoque(Integer quantidade) {
+        if (this.estoque < quantidade) {
+            throw new RegraNegocioException("Estoque insuficiente para o produto: " + this.nome);
+        }
+        this.estoque -= quantidade;
+    }
+
+    public void adicionarEstoque(Integer quantidade) {
+        this.estoque += quantidade;
     }
 }

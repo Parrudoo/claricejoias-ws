@@ -46,29 +46,56 @@ public class ProdutoService {
     }
 
     // Recebe o arquivo junto com o produto
+    @Transactional // Adicionamos para garantir a integridade caso dê erro no MinIO
     public Produto salvar(Produto produto, List<MultipartFile> files) throws Exception {
 
+        // 1. VERIFICAÇÃO DE PRODUTO JÁ EXISTENTE (Pelo Código de Barras / SKU)
+        // Supondo que você tenha o atributo 'codigo' mapeado na sua entidade
+        if (produto.getCodigo() != null && !produto.getCodigo().trim().isEmpty()) {
+
+            // Verifica no banco se esse código já foi cadastrado
+            Optional<Produto> produtoExistenteOpt = produtoRepository.findByCodigo(produto.getCodigo());
+
+            if (produtoExistenteOpt.isPresent()) {
+                Produto produtoExistente = produtoExistenteOpt.get();
+
+                // Pega a quantidade que o usuário digitou na tela de cadastro
+                Integer quantidadeParaAdicionar = produto.getEstoque() != null ? produto.getEstoque() : 0;
+
+                // Reutilizamos aquele método utilitário que criamos antes!
+                produtoExistente.adicionarEstoque(quantidadeParaAdicionar);
+
+                // Opcional: Se quiser que o novo preço digitado sobrescreva o preço antigo
+                // produtoExistente.setPreco(produto.getPreco());
+
+                // Salva apenas a atualização de estoque e ignora o resto (não faz upload de novas imagens)
+                return produtoRepository.save(produtoExistente);
+            }
+        }
+
+        // 2. SE NÃO EXISTIR, SEGUE O FLUXO NORMAL DE CRIAÇÃO (NOVO PRODUTO)
         // Verifica se a lista de arquivos não é nula e não está vazia
         if (files != null && !files.isEmpty()) {
 
-            // Cria uma lista vazia para guardar as URLs/Paths que o MinIO vai devolver
             List<String> caminhosImagens = new ArrayList<>();
 
             // Passa por cada arquivo recebido do React
             for (MultipartFile file : files) {
-                // Se o arquivo não estiver vazio (garantia extra)
                 if (!file.isEmpty()) {
-                    // Faz o upload de UM arquivo por vez
                     String objectName = minioService.upload(file);
-                    // Adiciona o caminho retornado na nossa lista
                     caminhosImagens.add(objectName);
                 }
             }
-
-            // Em vez de setPathImg, agora você precisa setar uma lista
-            produto.setLoginUsuario(autenticacaoService.getUsername());
-            produto.setRascunho(false);
             produto.setImagens(caminhosImagens);
+        }
+
+        produto.setLoginUsuario(autenticacaoService.getUsername());
+        produto.setRascunho(false);
+
+        // Garantia extra: Um produto novo nunca deve nascer com estoque nulo no banco
+        if (produto.getEstoque() == null) {
+            // Se precisar, você pode usar um setQuantidadeEstoque(0) dependendo de como está sua entidade
+            produto.adicionarEstoque(0);
         }
 
         return produtoRepository.save(produto);

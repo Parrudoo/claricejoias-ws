@@ -97,10 +97,15 @@ public class PedidoService {
             pedido.setValorDevido(BigDecimal.ZERO);
         }
 
-        // Mapeamento de Itens
+        // Mapeamento de Itens e BAIXA DE ESTOQUE
         List<ItemPedido> itens = dto.getItens().stream().map(itemDto -> {
             Produto produto = produtoRepository.findById(itemDto.getId())
                     .orElseThrow(() -> new RuntimeException("Produto não encontrado"));
+
+            // ---> AQUI ENTRA A REGRA DE ESTOQUE <---
+            // Tenta diminuir o estoque. Se a quantidade vendida for maior que o saldo,
+            // o método lançará a exception e o @Transactional fará o rollback de todo o PDV.
+            produto.diminuirEstoque(itemDto.getQuantidade());
 
             ItemPedido item = new ItemPedido();
             item.setPedido(pedido);
@@ -142,7 +147,6 @@ public class PedidoService {
     public Pedido realizarCheckoutOnline(String visitorId, String usuarioId, CheckoutDTO dto) {
 
         // 1. O carrinho agora é apenas um Pedido que estava aguardando (Status = CARRINHO)
-        // Você precisará criar esse método no PedidoRepository
         Pedido carrinhoAtual = pedidoRepository.buscarCarrinhoAtivo(visitorId, usuarioId)
                 .orElseThrow(() -> new RuntimeException("Nenhum carrinho ativo encontrado para checkout."));
 
@@ -150,7 +154,20 @@ public class PedidoService {
             throw new RuntimeException("Não é possível finalizar um pedido com a maleta vazia.");
         }
 
-        // 2. Busca ou cria o Cliente
+        // 2. BAIXA DE ESTOQUE (Regra de Negócio)
+        // Passa por todos os itens do carrinho e deduz o estoque antes de finalizar a venda.
+        for (ItemPedido item : carrinhoAtual.getItens()) {
+            Produto produto = item.getProduto();
+
+            // Se não houver saldo, o método diminuirEstoque lançará uma exception,
+            // e o @Transactional cancelará todo o processo imediatamente.
+            produto.diminuirEstoque(item.getQuantidade());
+
+            // Dica: Se quiser garantir que o preço não mudou desde que o cliente botou no carrinho:
+            // item.setPrecoUnitario(produto.getPreco());
+        }
+
+        // 3. Busca ou cria o Cliente
         Cliente cliente = clienteRepository.findByWhatsapp(dto.getWhatsapp())
                 .orElseGet(() -> {
                     Cliente novoCliente = new Cliente();
@@ -160,8 +177,7 @@ public class PedidoService {
                     return clienteRepository.save(novoCliente);
                 });
 
-        // 3. Atualiza os dados do Pedido que já existe!
-        // Não precisamos mais copiar os itens, eles já estão lá vinculados ao 'carrinhoAtual'
+        // 4. Atualiza os dados do Pedido que já existe
         carrinhoAtual.setCliente(cliente);
         carrinhoAtual.setDataAtualizacao(LocalDateTime.now());
 
@@ -172,8 +188,8 @@ public class PedidoService {
         carrinhoAtual.setValorRecebido(dto.getValorRecebido());
         carrinhoAtual.setValorEntrada(dto.getValorEntrada());
 
-        // A limpeza do carrinho não é mais deletar nada, o status mudou, então ele naturalmente
-        // deixa de aparecer nas buscas de "CARRINHO" ativo para esse usuário!
+        // Como os produtos foram modificados (estoque baixou), ao salvar o pedido o JPA/Hibernate
+        // fará o update automático nas tabelas de Produto também, sem precisarmos chamar produtoRepository.save()
 
         return pedidoRepository.save(carrinhoAtual);
     }
