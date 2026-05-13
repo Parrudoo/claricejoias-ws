@@ -119,26 +119,9 @@ public class ProdutoService {
         }).orElseThrow(() -> new RuntimeException("Produto não encontrado com o ID: " + id));
     }
 
+
     public void deletar(Long id) {
-        produtoRepository.findById(id).ifPresent(produto -> {
-
-            // Verifica se a lista de imagens não é nula e não está vazia
-            if (produto.getImagens() != null && !produto.getImagens().isEmpty()) {
-
-                // Passa por cada imagem da lista e deleta do MinIO
-                for (String imagem : produto.getImagens()) {
-                    try {
-                        minioService.delete(imagem);
-                    } catch (Exception e) {
-                        // Loga o erro, mas o loop continua para tentar apagar as próximas
-                        log.error("Erro ao deletar imagem do MinIO: {}", imagem, e);
-                    }
-                }
-            }
-
-            // Após limpar os arquivos físicos, deleta o registro do banco de dados
-            produtoRepository.delete(produto);
-        });
+        produtoRepository.findById(id).ifPresent(produtoRepository::delete);
     }
 
     @Transactional

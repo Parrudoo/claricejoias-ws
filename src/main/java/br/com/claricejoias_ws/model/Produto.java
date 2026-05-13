@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.SQLDelete;
+import org.hibernate.annotations.SQLRestriction;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -12,6 +14,8 @@ import java.util.List;
 @Getter
 @Setter
 @Entity
+@SQLDelete(sql = "UPDATE produto SET ativo = false WHERE id = ?")
+@SQLRestriction("ativo = true")
 public class Produto {
 
     @Id
@@ -35,6 +39,9 @@ public class Produto {
     private String material;
 
     private String loginUsuario;
+
+    @Column(nullable = false)
+    private boolean ativo = true; // Por padrão, o produto nasce ativo
 
     @ManyToOne
     @JoinColumn(name = "subcategoria_id")
