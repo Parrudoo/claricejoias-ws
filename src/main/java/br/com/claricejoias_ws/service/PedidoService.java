@@ -142,7 +142,7 @@ public class PedidoService {
             Optional<Cliente> clienteOpt;
             if (isAdmin) {
                 // Admin busca na base global (onde revendedor_id é nulo)
-                clienteOpt = clienteRepository.findByWhatsapp(whatsapp);
+                clienteOpt = clienteRepository.findByWhatsappAndRevendedorIsNull(whatsapp);
             } else {
                 // Revendedor busca na sua base isolada
                 clienteOpt = clienteRepository.findByWhatsappAndRevendedorId(whatsapp, revendedor.getId());

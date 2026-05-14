@@ -26,10 +26,35 @@ public class ClienteController {
     private final AutenticacaoService autenticacaoService;
     private final ClienteRepository clienteRepository;
 
-    @Operation(summary = "Listar todos os clientes cadastrados")
+    @Operation(summary = "Listar clientes baseados no perfil do usuário logado")
     @GetMapping
-    public ResponseEntity<List<ClienteResponseDTO>> listarTodos() {
-        return ResponseEntity.ok(clienteService.listarTodos());
+    public ResponseEntity<List<ClienteResponseDTO>> listarTodos(@AuthenticationPrincipal Jwt jwt) {
+
+        // 1. Pega o ID do usuário (geralmente mapeado no 'sub' do token)
+        String userId = jwt.getSubject();
+
+        // 2. Extrai a flag de Admin lendo as roles do token
+        boolean isAdmin = verificarSeAdmin(jwt);
+
+        // 3. Passa a responsabilidade para o Service
+        return ResponseEntity.ok(clienteService.listarTodos(userId, isAdmin));
+    }
+
+    private boolean verificarSeAdmin(Jwt jwt) {
+        // Estrutura padrão quando se usa Keycloak
+        if (jwt.hasClaim("realm_access")) {
+            Map<String, Object> realmAccess = jwt.getClaim("realm_access");
+            if (realmAccess != null && realmAccess.containsKey("roles")) {
+                List<String> roles = (List<String>) realmAccess.get("roles");
+                // Verifique o nome exato da sua role (pode ser "admin", "ROLE_ADMIN", etc)
+                return roles.contains("ROLE_ADMIN") || roles.contains("admin") || roles.contains("ADMIN");
+            }
+        }
+
+        // Caso você mapeie as authorities de outra forma, pode verificar assim:
+        // jwt.getClaimAsStringList("roles").contains("ROLE_ADMIN");
+
+        return false;
     }
 
     @Operation(summary = "Listar clientes com saldo devedor pendente")

@@ -24,7 +24,7 @@ public class Cliente {
     @Column(nullable = false)
     private String nome;
 
-    @Column(unique = true)
+    @Column(nullable = false)
     private String whatsapp;
 
     private String email;

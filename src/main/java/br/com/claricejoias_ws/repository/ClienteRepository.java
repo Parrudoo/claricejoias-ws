@@ -21,13 +21,10 @@ public interface ClienteRepository extends JpaRepository<Cliente, Long> {
     List<Cliente> findClientesInadimplentes(@Param("statusPendente") StatusParcela statusPendente);
 
     Optional<Cliente> findByWhatsapp(String whatsapp);
-
     boolean existsByWhatsapp(String whatsapp);
-
     Optional<Cliente> findByWhatsappAndRevendedorId(String whatsapp, String revendedorId);
-
     Optional<Cliente> findByUsuarioId(String usuarioId);
-
-    // 👇 ADICIONE ESTA LINHA PARA A TELA DA REVENDEDORA
+    // ADICIONE ESTA LINHA PARA A TELA DA REVENDEDORA
     List<Cliente> findByRevendedorId(String revendedorId);
+    Optional<Cliente> findByWhatsappAndRevendedorIsNull(String whatsapp);
 }

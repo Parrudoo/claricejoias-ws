@@ -35,8 +35,18 @@ public class ClienteService {
     private final LeadRepository leadRepository;
 
     @Transactional(readOnly = true)
-    public List<ClienteResponseDTO> listarTodos() {
-        return clienteRepository.findAll().stream()
+    public List<ClienteResponseDTO> listarTodos(String userId, boolean isAdmin) {
+        List<Cliente> clientes;
+
+        if (isAdmin) {
+            // Se for Admin, puxa o banco inteiro (todos os clientes de todo mundo)
+            clientes = clienteRepository.findAll();
+        } else {
+            // Se for Revendedor, puxa APENAS os clientes atrelados ao ID dele
+            clientes = clienteRepository.findByRevendedorId(userId);
+        }
+
+        return clientes.stream()
                 .map(this::converterParaDTO)
                 .collect(Collectors.toList());
     }
