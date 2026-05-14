@@ -29,4 +29,11 @@ public class ItemPedido {
 
     // ️ ESSENCIAL: Salva o preço que o produto custava NA HORA QUE ELE CLICOU "ENVIAR PEDIDO"
     private BigDecimal precoUnitario;
+
+
+    @Column(name = "custo_unitario", precision = 10, scale = 2)
+    private BigDecimal custoUnitario; // O quanto a joia custava no dia da venda
+
+    @Column(precision = 10, scale = 2)
+    private BigDecimal lucro; // (precoUnitario - custoUnitario) * quantidade
 }

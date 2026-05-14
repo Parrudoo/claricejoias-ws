@@ -37,6 +37,7 @@ public class PedidoService {
     private final ModelMapper modelMapper;
 
 
+
     @Transactional
     public Pedido registrarPedidoPDV(PedidoRequestDTO dto, String userId, boolean isAdmin, String loginOperador) {
         Pedido pedido = new Pedido();
@@ -56,6 +57,22 @@ public class PedidoService {
         // --- Lógica de Financeiro (Total, Pagamento, Troco) ---
         BigDecimal totalVenda = dto.getTotal() != null ? dto.getTotal() : BigDecimal.ZERO;
         pedido.setTotal(totalVenda);
+
+        // ========================================================================
+        // NOVO: CÁLCULO DA COMISSÃO DO REVENDEDOR (LUCRO)
+        // ========================================================================
+        if (revendedor != null && revendedor.getPercentualComissao() != null) {
+            // Divide a porcentagem por 100 (Ex: 30.00 / 100 = 0.30)
+            BigDecimal taxa = revendedor.getPercentualComissao().divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP);
+            // Multiplica o total da venda pela taxa para achar a comissão
+            BigDecimal comissao = totalVenda.multiply(taxa).setScale(2, RoundingMode.HALF_UP);
+
+            pedido.setComissaoRevendedor(comissao);
+        } else {
+            // Se for venda da matriz (Admin) ou o revendedor não tiver taxa definida
+            pedido.setComissaoRevendedor(BigDecimal.ZERO);
+        }
+        // ========================================================================
 
         String metodo = dto.getPagamento().getMetodo();
         BigDecimal valorEntradaInput = dto.getPagamento().getValorEntrada();
@@ -126,9 +143,21 @@ public class PedidoService {
             item.setProduto(produto);
             item.setQuantidade(itemDto.getQuantidade());
 
+            // ---> Preço de Venda
             BigDecimal precoUnitario = itemDto.getPreco() != null ? itemDto.getPreco() : BigDecimal.ZERO;
             item.setPrecoUnitario(precoUnitario);
             item.setSubtotal(precoUnitario.multiply(BigDecimal.valueOf(itemDto.getQuantidade())));
+
+            // ========================================================================
+            // NOVO: SALVANDO O CUSTO HISTÓRICO DA PEÇA (Margem Bruta)
+            // ========================================================================
+            BigDecimal custoUnitario = produto.getPrecoCusto() != null ? produto.getPrecoCusto() : BigDecimal.ZERO;
+            item.setCustoUnitario(custoUnitario);
+
+            // A margem bruta da loja nesta peça (Preço Venda - Preço Custo) * Qtd
+            BigDecimal lucroUnitario = precoUnitario.subtract(custoUnitario);
+            item.setLucro(lucroUnitario.multiply(BigDecimal.valueOf(itemDto.getQuantidade())));
+            // ========================================================================
 
             return item;
         }).collect(Collectors.toList());
@@ -217,12 +246,23 @@ public class PedidoService {
 
 
 
-    public Page<PedidoDTO> listarPedidos(String loginOperador, String metodoPagamento, LocalDate dataInicio, LocalDate dataFim, Pageable pageable) {
+    public Page<PedidoDTO> listarPedidos(String userId, boolean isAdmin, String loginOperador, String metodoPagamento, LocalDate dataInicio, LocalDate dataFim, Pageable pageable) {
+
         LocalDateTime inicioDia = (dataInicio != null) ? dataInicio.atStartOfDay() : null;
         LocalDateTime fimDia = (dataFim != null) ? dataFim.atTime(LocalTime.MAX) : null;
 
-        // Aqui você pode adicionar um filtro para listar apenas status PAGO, ENVIADO, etc (ignorando CARRINHO)
-        Page<Pedido> pedidosPage = pedidoRepository.findComFiltros(loginOperador, metodoPagamento, inicioDia, fimDia, pageable);
+        // Regra de Ouro: Se for admin, revendedorIdFiltro fica nulo (traz tudo).
+        // Se for revendedor, fixa o filtro no ID dele.
+        String revendedorIdFiltro = isAdmin ? null : userId;
+
+        Page<Pedido> pedidosPage = pedidoRepository.findComFiltros(
+                revendedorIdFiltro,
+                loginOperador,
+                metodoPagamento,
+                inicioDia,
+                fimDia,
+                pageable
+        );
 
         return pedidosPage.map(p -> modelMapper.map(p, PedidoDTO.class));
     }

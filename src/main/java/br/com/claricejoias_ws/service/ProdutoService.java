@@ -1,5 +1,6 @@
 package br.com.claricejoias_ws.service;
 
+import br.com.claricejoias_ws.dto.ProdutoCatalogoDTO;
 import br.com.claricejoias_ws.dto.ProdutoDTO;
 import br.com.claricejoias_ws.model.Produto;
 import br.com.claricejoias_ws.repository.ProdutoRepository;
@@ -8,6 +9,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.Converters;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -325,4 +328,30 @@ public class ProdutoService {
         return codigo.trim().toUpperCase();
     }
 
+    @Transactional(readOnly = true)
+    public Page<ProdutoCatalogoDTO> listarCatalogoRevendedor(String slug, Pageable pageable) {
+        Page<Produto> produtos = produtoRepository.findCatalogoPorRevendedorSlug(slug, pageable);
+
+        return produtos.map(produto -> {
+            ProdutoCatalogoDTO dto = new ProdutoCatalogoDTO();
+            dto.setId(produto.getId());
+            dto.setNome(produto.getNome());
+            dto.setCodigo(produto.getCodigo());
+            dto.setPreco(produto.getPreco());
+            dto.setImagens(produto.getImagens()); // Puxa a lista de URLs de imagens
+
+            // Navega pelos relacionamentos pré-carregados
+            if (produto.getSubcategoria() != null) {
+                dto.setSubcategoriaId(produto.getSubcategoria().getId());
+                dto.setSubcategoriaNome(produto.getSubcategoria().getNome());
+
+                if (produto.getSubcategoria().getCategoria() != null) {
+                    dto.setCategoriaId(produto.getSubcategoria().getCategoria().getId());
+                    dto.setCategoriaNome(produto.getSubcategoria().getCategoria().getNome());
+                }
+            }
+
+            return dto;
+        });
+    }
 }

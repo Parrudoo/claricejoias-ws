@@ -9,13 +9,14 @@ import jakarta.persistence.OneToMany;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Set;
 
 @Data
 public class SubcategoriaDTO {
 
     private Long id;
     private String nome;
-    private List<ProdutoDTO> itens;
+    private Set<ProdutoDTO> itens;
 //    private CategoriaDTO categoria;
 
 }

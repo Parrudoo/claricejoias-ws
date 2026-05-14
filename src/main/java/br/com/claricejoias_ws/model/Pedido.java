@@ -77,6 +77,13 @@ public class Pedido {
     @OneToMany(mappedBy = "pedido", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Pagamento> pagamentos = new ArrayList<>();
 
+    @Column(name = "comissao_revendedor", precision = 10, scale = 2)
+    private BigDecimal comissaoRevendedor = BigDecimal.ZERO;
+
+
+    @Column(name = "total_lucro", precision = 10, scale = 2)
+    private BigDecimal totalLucro = BigDecimal.ZERO;
+
     public void addItem(ItemPedido item) {
         itens.add(item);
         item.setPedido(this);

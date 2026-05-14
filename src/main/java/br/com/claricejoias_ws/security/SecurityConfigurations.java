@@ -34,6 +34,7 @@ public class SecurityConfigurations {
                         // Rotas Públicas (Catálogo e Imagens)
                         .requestMatchers(HttpMethod.GET, "/api/produtos/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/catalogo-publico/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/visitantes/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/visitantes/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/cadastro", "/api/auth/recuperar-senha").permitAll()

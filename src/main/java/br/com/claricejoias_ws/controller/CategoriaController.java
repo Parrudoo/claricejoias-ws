@@ -23,11 +23,18 @@ public class CategoriaController {
     @Autowired
     private CategoriaService service;
 
-    @Operation(summary = "Listar todas as categorias", description = "Retorna uma lista completa de categorias com suas respectivas subcategorias")
+    // =========================================================================================
+    // ENDPOINT ATUALIZADO: Agora aceita o 'slug' como parâmetro opcional na URL
+    // =========================================================================================
+    @Operation(summary = "Listar todas as categorias ou vitrine", description = "Retorna o catálogo da Matriz. Se o slug for informado, retorna a maleta exclusiva do revendedor.")
     @GetMapping
-    public List<CategoriaDTO> listar() {
-        List<CategoriaDTO> categorias = service.listarTodas();
-        return categorias;
+    public List<CategoriaDTO> listar(@RequestParam(required = false) String slug) {
+        if (slug != null && !slug.trim().isEmpty()) {
+            // Se veio /api/categorias?slug=karolbarcelar, filtra na maleta
+            return service.listarVitrineRevendedor(slug);
+        }
+        // Se veio /api/categorias normal, traz a loja matriz
+        return service.listarTodas();
     }
 
     @Operation(summary = "Listar subcategorias de uma categoria", description = "Retorna a lista de subcategorias vinculadas a uma categoria específica através do seu ID")

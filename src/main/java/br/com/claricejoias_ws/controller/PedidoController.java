@@ -22,6 +22,8 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/pedidos")
@@ -71,16 +73,39 @@ public class PedidoController {
     @Operation(summary = "Listar pedidos", description = "Retorna o histórico de pedidos consolidados.")
     @GetMapping
     public ResponseEntity<Page<PedidoDTO>> listarPedidos(
+            @AuthenticationPrincipal Jwt jwt,
             @RequestParam(required = false) String loginOperador,
             @RequestParam(required = false) String metodoPagamento,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim,
             @PageableDefault(page = 0, size = 20, sort = "id", direction = Sort.Direction.DESC) Pageable pageable) {
 
-        return ResponseEntity.ok(pedidoService.listarPedidos(loginOperador, metodoPagamento, dataInicio, dataFim, pageable));
+        // 1. Extrai ID e Perfil do Token
+        String userId = jwt.getSubject();
+        boolean isAdmin = verificarSeAdmin(jwt); // Use aquele mesmo método auxiliar que criamos no ClienteController
+
+        // 2. Passa para o Service
+        return ResponseEntity.ok(pedidoService.listarPedidos(
+                userId, isAdmin, loginOperador, metodoPagamento, dataInicio, dataFim, pageable
+        ));
     }
 
+    private boolean verificarSeAdmin(Jwt jwt) {
+        // Estrutura padrão quando se usa Keycloak
+        if (jwt.hasClaim("realm_access")) {
+            Map<String, Object> realmAccess = jwt.getClaim("realm_access");
+            if (realmAccess != null && realmAccess.containsKey("roles")) {
+                List<String> roles = (List<String>) realmAccess.get("roles");
+                // Verifique o nome exato da sua role (pode ser "admin", "ROLE_ADMIN", etc)
+                return roles.contains("ROLE_ADMIN") || roles.contains("admin") || roles.contains("ADMIN");
+            }
+        }
 
+        // Caso você mapeie as authorities de outra forma, pode verificar assim:
+        // jwt.getClaimAsStringList("roles").contains("ROLE_ADMIN");
+
+        return false;
+    }
 
     @Operation(summary = "Listar meus pedidos", description = "Retorna o histórico de pedidos do cliente logado de forma paginada.")
     @GetMapping("/meus-pedidos")

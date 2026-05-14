@@ -1,6 +1,9 @@
 package br.com.claricejoias_ws.service;
 
 import br.com.claricejoias_ws.dto.CategoriaDTO;
+import br.com.claricejoias_ws.dto.ProdutoCatalogoDTO;
+import br.com.claricejoias_ws.dto.ProdutoDTO;
+import br.com.claricejoias_ws.dto.SubcategoriaDTO;
 import br.com.claricejoias_ws.model.Categoria;
 import br.com.claricejoias_ws.model.Subcategoria;
 import br.com.claricejoias_ws.repository.CategoriaRepository;
@@ -11,6 +14,7 @@ import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -24,12 +28,45 @@ public class CategoriaService {
     private final ModelMapper modelMapper;
     private final AutenticacaoService autenticacaoService;
 
-    public List<CategoriaDTO> listarTodas() {
 
 
-        return repository.findAll().stream()
-                .map(categoria -> modelMapper.map(categoria, CategoriaDTO.class))
-                .collect(Collectors.toList());
+
+        public List<CategoriaDTO> listarTodas() {
+            return repository.findAll().stream()
+                    // Chamamos um método próprio em vez do modelMapper direto
+                    .map(this::converterCategoriaParaDTO)
+                    .collect(Collectors.toList());
+        }
+
+
+    private CategoriaDTO converterCategoriaParaDTO(Categoria categoria) {
+        CategoriaDTO dto = new CategoriaDTO();
+        dto.setId(categoria.getId());
+        dto.setNome(categoria.getNome());
+        // (Se houver outros campos simples na categoria, adicione aqui)
+
+        // Mapeamento à prova de balas para o Set de Subcategorias
+        if (categoria.getSubcategorias() != null) {
+            dto.setSubcategorias(categoria.getSubcategorias().stream()
+                    .map(sub -> {
+                        SubcategoriaDTO subDto = new SubcategoriaDTO();
+                        subDto.setId(sub.getId());
+                        subDto.setNome(sub.getNome());
+
+                        // Se o seu SubcategoriaDTO tiver a lista de produtos, mapeie aqui:
+                        if (sub.getItens() != null) {
+                            subDto.setItens(sub.getItens().stream()
+                                    // Como a joia não tem mais listas complexas dentro dela, o modelMapper puro funciona bem aqui!
+                                    .map(prod -> modelMapper.map(prod, ProdutoDTO.class))
+                                    .collect(Collectors.toCollection(LinkedHashSet::new)));
+                        }
+
+                        return subDto;
+                    })
+                    .collect(Collectors.toCollection(LinkedHashSet::new)));
+        }
+
+        return dto;
     }
 
 
@@ -71,5 +108,16 @@ public class CategoriaService {
             throw new RuntimeException("Não é possível deletar: Categoria inexistente.");
         }
         repository.deleteById(id);
+    }
+
+    // Adicione no seu CategoriaService.java
+    public List<CategoriaDTO> listarVitrineRevendedor(String slug) {
+        // Busca as categorias cruzadas com a maleta do revendedor
+        List<Categoria> categoriasRevendedor = repository.findVitrineDoRevendedor(slug);
+
+        // Converte as entidades para DTO (Use a mesma lógica/mapper que você já usa no listarTodas)
+        return categoriasRevendedor.stream()
+                .map(categoria -> modelMapper.map(categoria, CategoriaDTO.class))
+                .collect(Collectors.toList());
     }
 }

@@ -3,6 +3,7 @@ package br.com.claricejoias_ws.dto;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Set;
 
 @Data
 public class CategoriaDTO {
@@ -10,5 +11,5 @@ public class CategoriaDTO {
     private Long id;
     private String nome;
 
-    private List<SubcategoriaDTO> subcategorias;
+    private Set<SubcategoriaDTO> subcategorias;
 }

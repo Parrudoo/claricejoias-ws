@@ -26,11 +26,13 @@ public interface PedidoRepository extends JpaRepository<Pedido, Long> {
     Optional<Pedido> buscarCarrinhoAtivo(@Param("visitorId") String visitorId, @Param("usuarioId") String usuarioId);
 
     @Query("SELECT p FROM Pedido p WHERE " +
+            "(CAST(:revendedorId AS text) IS NULL OR p.revendedor.id = :revendedorId) AND " +
             "(CAST(:loginOperador AS text) IS NULL OR p.loginOperador = :loginOperador) AND " +
             "(CAST(:metodoPagamento AS text) IS NULL OR p.metodoPagamento = :metodoPagamento) AND " +
             "(CAST(:inicioDia AS timestamp) IS NULL OR p.dataCriacao >= :inicioDia) AND " +
             "(CAST(:fimDia AS timestamp) IS NULL OR p.dataCriacao <= :fimDia)")
     Page<Pedido> findComFiltros(
+            @Param("revendedorId") String revendedorId,
             @Param("loginOperador") String loginOperador,
             @Param("metodoPagamento") String metodoPagamento,
             @Param("inicioDia") LocalDateTime inicioDia,
