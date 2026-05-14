@@ -1,5 +1,6 @@
 package br.com.claricejoias_ws.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
@@ -15,9 +16,9 @@ public class ProdutoDTO {
     private String nome;
     private BigDecimal preco;
     private BigDecimal precoCusto;
-    private Integer estoque;
+    @JsonProperty("estoque")
+    private Integer quantidadeEstoqueCentral;
     private String codigo;
-    // Campo atualizado para retornar a lista de links gerados pelo MinIO
     private List<String> imagens;
 
     private String material;

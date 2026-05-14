@@ -24,7 +24,7 @@ public class CarrinhoController {
         String usuarioId = (jwt != null) ? jwt.getSubject() : null;
 
         // Esse método já deixamos retornando o DTO pronto direto do Service
-        CarrinhoDTO carrinho = carrinhoService.consultarCarrinhoAtual(visitorId, usuarioId);
+        CarrinhoDTO carrinho = carrinhoService.consultarCarrinhoAtualDTO(visitorId, usuarioId);
 
         if (carrinho == null) {
             return ResponseEntity.noContent().build();

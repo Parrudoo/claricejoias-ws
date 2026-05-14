@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -28,7 +29,12 @@ public class Lead {
     private Boolean ativo = true;
     private Boolean comprou = false;
 
+    // Para sabermos qual cupom ele ganhou
+    private String cupomGerado;
+    private LocalDateTime dataCadastro;
+
     @OneToMany(mappedBy = "lead", cascade = CascadeType.ALL)
+    @OrderBy("dataCriacao DESC")
     private List<Pedido> pedidos = new ArrayList<>();
 
     // Relacionamento com o histórico ordenado
@@ -40,6 +46,11 @@ public class Lead {
     public void setWhatsapp(String whatsapp) {
         // Se vier nulo, guarda nulo. Se vier preenchido, limpa tudo que não for número.
         this.whatsapp = (whatsapp != null) ? whatsapp.replaceAll("[^0-9]", "") : null;
+    }
+
+    @PrePersist
+    public void prePersist() {
+        this.dataCadastro = LocalDateTime.now();
     }
 
 

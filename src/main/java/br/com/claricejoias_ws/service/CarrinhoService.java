@@ -5,6 +5,7 @@ import br.com.claricejoias_ws.dto.ItemCarrinhoDTO;
 import br.com.claricejoias_ws.dto.ProdutoDTO;
 import br.com.claricejoias_ws.enums.OrigemPedido;
 import br.com.claricejoias_ws.enums.StatusPedido;
+import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.ItemPedido;
 import br.com.claricejoias_ws.model.Pedido;
 import br.com.claricejoias_ws.model.Produto;
@@ -34,6 +35,7 @@ public class CarrinhoService {
     private final ProdutoRepository produtoRepository;
     private final ModelMapper modelMapper;
 
+
     @Transactional
     @Retryable(
             retryFor = {
@@ -52,7 +54,7 @@ public class CarrinhoService {
     }
 
     @Transactional(readOnly = true)
-    public CarrinhoDTO consultarCarrinhoAtual(String visitorId, String usuarioId) {
+    public CarrinhoDTO consultarCarrinhoAtualDTO(String visitorId, String usuarioId) {
         Optional<Pedido> carrinhoOpt = Optional.empty();
 
         if (isUsuarioLogado(usuarioId)) {
@@ -63,12 +65,74 @@ public class CarrinhoService {
 
         return carrinhoOpt.map(this::convertToDTO).orElse(null);
     }
+    public Pedido consultarPedidoAtualEntidade(String visitorId, String usuarioId) {
+        Optional<Pedido> carrinhoOpt = Optional.empty();
+
+        if (isUsuarioLogado(usuarioId)) {
+            carrinhoOpt = pedidoRepository.findFirstByUsuarioIdAndStatusOrderByIdDesc(usuarioId, StatusPedido.CARRINHO);
+        } else if (visitorId != null) {
+            carrinhoOpt = pedidoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(visitorId, StatusPedido.CARRINHO);
+        }
+
+        return carrinhoOpt.orElse(null);
+    }
+
+
+
+
+    // No CarrinhoService.java
+    public CarrinhoDTO aplicarCupom(String visitorId, String usuarioId, String codigoCupom) {
+        // 1. Busca o pedido atual (Status CARRINHO)
+        Pedido pedido = consultarPedidoAtualEntidade(visitorId, usuarioId);
+
+        // 2. Lógica de validação do cupom (exemplo fixo de 20%)
+        if ("CLARICE20".equalsIgnoreCase(codigoCupom)) {
+            BigDecimal subtotal = calcularSubtotal(pedido); // Soma dos itens
+            BigDecimal desconto = subtotal.multiply(new BigDecimal("0.20"));
+
+            pedido.setCupomDesconto(codigoCupom.toUpperCase());
+            pedido.setValorDesconto(desconto);
+            pedido.setTotalCobrado(subtotal.subtract(desconto));
+        } else {
+            throw new RegraNegocioException("Cupom inválido.");
+        }
+
+        pedidoRepository.save(pedido);
+        return convertToDTO(pedido); // Retorna o DTO com os novos valores
+    }
+
+    // Adicione este método dentro do seu CarrinhoService (ou PedidoService)
+
+    private BigDecimal calcularSubtotal(Pedido pedido) {
+        // 1. Prevenção de nulos: se não houver itens, o subtotal é zero
+        if (pedido.getItens() == null || pedido.getItens().isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+
+        // 2. Usamos o Stream com map() e reduce() para somar os BigDecimals
+        return pedido.getItens().stream()
+                .map(item -> {
+                    // Assumindo que seu getPrecoUnitario() já retorna um BigDecimal.
+                    // Se ele ainda retornar Double, use: BigDecimal.valueOf(item.getPrecoUnitario())
+                    BigDecimal preco = item.getPrecoUnitario();
+
+                    // Converte a quantidade (que deve ser int ou Integer) para BigDecimal
+                    BigDecimal quantidade = new BigDecimal(item.getQuantidade());
+
+                    // Multiplica o preço pela quantidade
+                    return preco.multiply(quantidade);
+                })
+                // Soma todos os resultados começando do ZERO
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
 
     public CarrinhoDTO convertToDTO(Pedido pedido) {
         CarrinhoDTO dto = new CarrinhoDTO();
         dto.setId(pedido.getId());
         dto.setVisitorId(pedido.getVisitorId());
         dto.setUsuarioId(pedido.getUsuarioId());
+        dto.setCupomDesconto(pedido.getCupomDesconto());
+        dto.setValorDesconto(pedido.getValorDesconto());
 
         List<ItemCarrinhoDTO> itensDTO = pedido.getItens().stream().map(item -> {
             ItemCarrinhoDTO itemDto = new ItemCarrinhoDTO();

@@ -60,7 +60,7 @@ public class ProdutoService {
                 Produto produtoExistente = produtoExistenteOpt.get();
 
                 // Pega a quantidade que o usuário digitou na tela de cadastro
-                Integer quantidadeParaAdicionar = produto.getEstoque() != null ? produto.getEstoque() : 0;
+                Integer quantidadeParaAdicionar = produto.getQuantidadeEstoqueCentral() != null ? produto.getQuantidadeEstoqueCentral() : 0;
 
                 // Reutilizamos aquele método utilitário que criamos antes!
                 produtoExistente.adicionarEstoque(quantidadeParaAdicionar);
@@ -93,7 +93,7 @@ public class ProdutoService {
         produto.setRascunho(false);
 
         // Garantia extra: Um produto novo nunca deve nascer com estoque nulo no banco
-        if (produto.getEstoque() == null) {
+        if (produto.getQuantidadeEstoqueCentral() == null) {
             // Se precisar, você pode usar um setQuantidadeEstoque(0) dependendo de como está sua entidade
             produto.adicionarEstoque(0);
         }
@@ -108,7 +108,7 @@ public class ProdutoService {
             produto.setPrecoCusto(produtoAtualizado.getPrecoCusto());
             produto.setCodigo(produtoAtualizado.getCodigo());
             produto.setMaterial(produtoAtualizado.getMaterial());
-            produto.setEstoque(produtoAtualizado.getEstoque());
+            produto.setQuantidadeEstoqueCentral(produtoAtualizado.getQuantidadeEstoqueCentral());
             produto.setLoginUsuario(autenticacaoService.getUsername());
             produto.setSubcategoria(produtoAtualizado.getSubcategoria());
             produto.setRascunho(false);
@@ -229,7 +229,7 @@ public class ProdutoService {
                         }
 
                         // Define como inativo e sem estoque até a Clarice revisar e salvar a foto
-                        rascunho.setEstoque(0);
+                        rascunho.setQuantidadeEstoqueCentral(0);
 
                         produtoRepository.save(rascunho);
                     }

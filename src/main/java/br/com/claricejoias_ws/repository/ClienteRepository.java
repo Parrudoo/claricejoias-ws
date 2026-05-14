@@ -24,5 +24,10 @@ public interface ClienteRepository extends JpaRepository<Cliente, Long> {
 
     boolean existsByWhatsapp(String whatsapp);
 
+    Optional<Cliente> findByWhatsappAndRevendedorId(String whatsapp, String revendedorId);
+
     Optional<Cliente> findByUsuarioId(String usuarioId);
+
+    // 👇 ADICIONE ESTA LINHA PARA A TELA DA REVENDEDORA
+    List<Cliente> findByRevendedorId(String revendedorId);
 }

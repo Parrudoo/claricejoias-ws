@@ -29,6 +29,11 @@ public class Cliente {
 
     private String email;
 
+
+    @ManyToOne
+    @JoinColumn(name = "revendedor_id")
+    private Revendedor revendedor;
+
     @Column(unique = true, nullable = false)
     private String usuarioId;
 

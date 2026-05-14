@@ -31,6 +31,9 @@ public class Pedido {
     private String usuarioId;
     private String visitorId;
 
+    private String cupomDesconto;
+    private BigDecimal valorDesconto;
+
     @ManyToOne
     @JoinColumn(name = "lead_id")
     private Lead lead; // Fica NULO se for uma venda direta no PDV
@@ -49,6 +52,10 @@ public class Pedido {
 
     @Column(name = "valor_devido")
     private BigDecimal valorDevido = BigDecimal.ZERO;
+
+    @ManyToOne
+    @JoinColumn(name = "revendedor_id")
+    private Revendedor revendedor;
 
 
     @Column(name = "metodo_pagamento", nullable = false)

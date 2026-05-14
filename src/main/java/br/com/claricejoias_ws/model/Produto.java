@@ -1,6 +1,7 @@
 package br.com.claricejoias_ws.model;
 
 import br.com.claricejoias_ws.exceptions.RegraNegocioException;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.Getter;
@@ -25,8 +26,14 @@ public class Produto {
     private String nome;
     private BigDecimal preco;
     private BigDecimal precoCusto;
-    private Integer estoque;
+
+    // O frontend continuará mandando e recebendo como "estoque"
+    @JsonProperty("estoque")
+    private Integer quantidadeEstoqueCentral;
     private String codigo;
+
+    // Estoque disponível para venda direta no e-commerce
+
 
     @Column(name = "rascunho")
     private boolean rascunho = true;
@@ -52,14 +59,14 @@ public class Produto {
         this.imagens.add(caminho);
     }
 
-    public void diminuirEstoque(Integer quantidade) {
-        if (this.estoque < quantidade) {
-            throw new RegraNegocioException("Estoque insuficiente para o produto: " + this.nome);
+    public void diminuirEstoqueCentral(Integer qtd) {
+        if (this.quantidadeEstoqueCentral == null || this.quantidadeEstoqueCentral < qtd) {
+            throw new RuntimeException("Estoque central insuficiente para o produto: " + this.nome);
         }
-        this.estoque -= quantidade;
+        this.quantidadeEstoqueCentral -= qtd;
     }
 
     public void adicionarEstoque(Integer quantidade) {
-        this.estoque += quantidade;
+        this.quantidadeEstoqueCentral += quantidade;
     }
 }

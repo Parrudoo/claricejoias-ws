@@ -10,6 +10,8 @@ public class CarrinhoDTO {
     private String visitorId;
     private BigDecimal valorTotal;
     private String usuarioId;
+    private String cupomDesconto;
+    private BigDecimal valorDesconto;
 
     // Lista de itens já tipada com o DTO para quebrar o loop do Hibernate
     private List<ItemCarrinhoDTO> itens;

@@ -18,6 +18,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -31,14 +32,21 @@ public class PedidoController {
     private final PedidoService pedidoService;
     private final AutenticacaoService autenticacaoService;
 
-    @Operation(summary = "Registrar nova venda (PDV)", description = "Utilizado pelo operador para registrar uma venda manual realizada fisicamente na loja.")
+    @Operation(summary = "Registrar nova venda (PDV)", description = "Venda manual por Admin ou Revendedor.")
     @PostMapping("/pdv")
-    public ResponseEntity<?> registrarPedidoPDV(@RequestBody PedidoRequestDTO dto) {
+    public ResponseEntity<?> registrarPedidoPDV(@RequestBody PedidoRequestDTO dto, JwtAuthenticationToken token) {
         try {
-            Pedido pedidoSalvo = pedidoService.registrarPedidoPDV(dto, autenticacaoService.getUsername());
+            // Extrai o UUID (sub) do Keycloak
+            String userId = token.getToken().getSubject();
+
+            // Verifica se o usuário tem a role de ADMIN
+            // Verifica se a autoridade é "ROLE_ADMIN" ou apenas "ADMIN"
+            boolean isAdmin = token.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ADMIN"));
+
+            Pedido pedidoSalvo = pedidoService.registrarPedidoPDV(dto, userId, isAdmin, autenticacaoService.getUsername());
             return ResponseEntity.status(HttpStatus.CREATED).body(pedidoSalvo);
         } catch (Exception e) {
-            e.printStackTrace();
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         }
     }

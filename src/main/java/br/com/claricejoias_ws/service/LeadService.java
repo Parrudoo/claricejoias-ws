@@ -21,11 +21,7 @@ import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Random;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -55,7 +51,7 @@ public class LeadService {
     }
 
     @Transactional
-    public void converterEmLead(LeadDTO dto, String visitorId) {
+    public String converterEmLead(LeadDTO dto, String visitorId) {
         String whatsappLimpo = dto.getWhatsapp().replaceAll("[^0-9]", "");
 
         if (whatsappLimpo.length() < 10) {
@@ -82,6 +78,9 @@ public class LeadService {
         if (dto.getEmail() != null) lead.setEmail(dto.getEmail());
 
         repository.save(lead);
+
+        // ADICIONE ESTA LINHA: Retorna o código do cupom que o cliente ganhou
+        return "CLARICE20";
     }
 
     // ==========================================
@@ -223,7 +222,6 @@ public class LeadService {
     }
 
 
-
     // ==========================================
     // ETAPA 3: PAINEL ADMINISTRATIVO (CRUD)
     // ==========================================
@@ -249,34 +247,41 @@ public class LeadService {
         dto.setAtivo(lead.getAtivo());
         dto.setComprou(lead.getComprou());
 
-        // 2. Mapeamos os Itens (extraindo do Pedido que é um Carrinho)
+        // 2. Mapeamos os Itens (extraindo do Pedido que é um Carrinho) e Agrupamos
         if (lead.getPedidos() != null) {
             lead.getPedidos().stream()
-//                    .filter(p -> p.getStatus() != null &&
-//                            (p.getStatus().equals(StatusPedido.CARRINHO) || p.getStatus().equals(StatusPedido.CARRINHO_ABANDONADO)))
-                    .findFirst() // Pegamos o carrinho mais recente do Lead
+                .filter(p -> p.getStatus() != null &&
+                        (p.getStatus().equals(StatusPedido.CARRINHO) || p.getStatus().equals(StatusPedido.CARRINHO_ABANDONADO)))
+                    .findFirst() // Pegamos o carrinho
                     .ifPresent(pedido -> {
-                        List<LeadItemDTO> itensDTO = pedido.getItens().stream().map(item -> {
-                            LeadItemDTO itemDto = new LeadItemDTO();
 
-                            // Vinculamos o ID do produto e a quantidade
-                            itemDto.setId(item.getProduto().getId());
-                            itemDto.setQuantidade(item.getQuantidade());
+                        // Usamos Collectors.toMap para agrupar pelo ID do Produto
+                        List<LeadItemDTO> itensDTO = new ArrayList<>(pedido.getItens().stream()
+                                .filter(item -> item.getProduto() != null) // Prevenção de segurança
+                                .collect(Collectors.toMap(
+                                        item -> item.getProduto().getId(), // Chave: ID do Produto
+                                        item -> { // Valor: Construção do LeadItemDTO inicial
+                                            LeadItemDTO itemDto = new LeadItemDTO();
+                                            itemDto.setId(item.getProduto().getId());
+                                            itemDto.setQuantidade(item.getQuantidade());
+                                            itemDto.setPrecoMomento(item.getPrecoUnitario());
+                                            Produto prod = item.getProduto();
+                                            ProdutoDTO prodDto = new ProdutoDTO();
+                                            prodDto.setId(prod.getId());
+                                            prodDto.setNome(prod.getNome());
+                                            prodDto.setPreco(item.getPrecoUnitario()); // Mantemos o preço unitário
+                                            prodDto.setImagens(prod.getImagens());
 
-                            // Mapeamento manual do ProdutoDTO para evitar ModelMapper aqui também
-                            if (item.getProduto() != null) {
-                                Produto prod = item.getProduto();
-                                ProdutoDTO prodDto = new ProdutoDTO();
-                                prodDto.setId(prod.getId());
-                                prodDto.setNome(prod.getNome());
-                                prodDto.setPreco(item.getPrecoUnitario()); // Usamos o preço travado no item
-                                // Se você precisar de imagens no painel, mapeie aqui:
-                                prodDto.setImagens(prod.getImagens());
-
-                                itemDto.setProduto(prodDto);
-                            }
-                            return itemDto;
-                        }).collect(Collectors.toList());
+                                            itemDto.setProduto(prodDto);
+                                            return itemDto;
+                                        },
+                                        (itemExistente, itemRepetido) -> {
+                                            // Regra de Conflito: O que fazer se achar produtos iguais?
+                                            // Somamos a quantidade do item repetido ao item que já existia no map
+                                            itemExistente.setQuantidade(itemExistente.getQuantidade() + itemRepetido.getQuantidade());
+                                            return itemExistente;
+                                        }
+                                )).values()); // Pegamos apenas os valores resultantes
 
                         dto.setItens(itensDTO);
                     });
@@ -287,9 +292,9 @@ public class LeadService {
             List<HistoricoDisparoDTO> disparosDTO = lead.getHistoricoDisparos().stream().map(h -> {
                 HistoricoDisparoDTO hDto = new HistoricoDisparoDTO();
                 hDto.setId(h.getId());
-//                hDto.setMensagem(h.getMensagem());
+//            hDto.setMensagem(h.getMensagem());
                 hDto.setDataHoraDisparo(h.getDataHoraDisparo());
-//                hDto.setTipo(h.getTipo());
+//            hDto.setTipo(h.getTipo());
                 return hDto;
             }).collect(Collectors.toList());
 

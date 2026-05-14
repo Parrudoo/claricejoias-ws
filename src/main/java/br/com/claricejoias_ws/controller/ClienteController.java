@@ -2,6 +2,7 @@ package br.com.claricejoias_ws.controller;
 
 import br.com.claricejoias_ws.dto.*;
 import br.com.claricejoias_ws.model.Cliente;
+import br.com.claricejoias_ws.repository.ClienteRepository;
 import br.com.claricejoias_ws.service.AutenticacaoService;
 import br.com.claricejoias_ws.service.ClienteService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -23,6 +24,7 @@ public class ClienteController {
 
     private final ClienteService clienteService;
     private final AutenticacaoService autenticacaoService;
+    private final ClienteRepository clienteRepository;
 
     @Operation(summary = "Listar todos os clientes cadastrados")
     @GetMapping
@@ -35,6 +37,14 @@ public class ClienteController {
     public ResponseEntity<List<ClienteResponseDTO>> listarPendentes() {
         return ResponseEntity.ok(clienteService.listarPendentes());
     }
+
+    @Operation(summary = "Listar clientes da revendedora", description = "Retorna apenas os clientes vinculados a um revendedor específico.")
+    @GetMapping("/revendedor/{revendedorId}")
+    public ResponseEntity<List<Cliente>> listarPorRevendedor(@PathVariable String revendedorId) {
+        List<Cliente> clientes = clienteRepository.findByRevendedorId(revendedorId);
+        return ResponseEntity.ok(clientes);
+    }
+
 
 
     @GetMapping("/me")

@@ -19,14 +19,9 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
     List<Lead> findLeadsParaCampanhaPorSubcategoria(@Param("subcategoriaId") Long subcategoriaId);
 
     Page<Lead> findByAtivoTrueAndComprouFalse(Pageable pageable);
-
     Optional<Lead> findByWhatsapp(String whatsapp);
-
     Optional<Lead> findByVisitorId(String visitorId);
-
-
+    boolean existsByWhatsapp(String whatsapp);
     boolean existsByVisitorId(String visitorId);
-
-
     Optional<Lead> findFirstByVisitorIdOrderByIdDesc(String visitorId);
 }
