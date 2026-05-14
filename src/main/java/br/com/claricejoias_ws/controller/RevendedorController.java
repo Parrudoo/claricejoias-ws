@@ -1,23 +1,29 @@
 package br.com.claricejoias_ws.controller;
 
+import br.com.claricejoias_ws.dto.AcertoRevendedorDTO;
 import br.com.claricejoias_ws.model.Revendedor;
 import br.com.claricejoias_ws.repository.RevendedorRepository;
+import br.com.claricejoias_ws.service.FinanceiroRevendedorService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/revendedores")
 @Tag(name = "Revendedores", description = "Gerenciamento de vínculos com usuários do Keycloak")
+@RequiredArgsConstructor
 public class RevendedorController {
 
     @Autowired
     private RevendedorRepository repository;
+    private final FinanceiroRevendedorService financeiroRevendedorService;
 
     @Operation(summary = "Vincular novo revendedor", description = "Cria um registro local para um usuário já cadastrado no Keycloak utilizando seu UUID.")
     @PostMapping
@@ -49,5 +55,20 @@ public class RevendedorController {
         }
         repository.deleteById(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{revendedorId}/acerto")
+    public ResponseEntity<AcertoRevendedorDTO> obterAcerto(
+            @PathVariable String revendedorId,
+            @RequestParam(required = false) Integer mes,
+            @RequestParam(required = false) Integer ano) {
+
+        // Se não mandar mês/ano na URL, pega o mês atual por padrão
+        if (mes == null) mes = LocalDate.now().getMonthValue();
+        if (ano == null) ano = LocalDate.now().getYear();
+
+        AcertoRevendedorDTO acerto = financeiroRevendedorService.calcularAcertoMensal(revendedorId, mes, ano);
+
+        return ResponseEntity.ok(acerto);
     }
 }

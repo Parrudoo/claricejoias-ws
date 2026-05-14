@@ -40,6 +40,15 @@ public interface PedidoRepository extends JpaRepository<Pedido, Long> {
             Pageable pageable
     );
 
+
+    // Busca os pedidos de um revendedor específico, em um intervalo de datas e que estejam PAGOS
+    List<Pedido> findByRevendedorIdAndDataCriacaoBetweenAndStatus(
+            String revendedorId,
+            LocalDateTime dataInicio,
+            LocalDateTime dataFim,
+            StatusPedido status
+    );
+
     Optional<Pedido> findFirstByUsuarioIdAndStatusOrderByIdDesc(String usuarioId, StatusPedido statusPedido);
 
     Optional<Pedido> findFirstByVisitorIdAndStatusOrderByIdDesc(String visitorId, StatusPedido statusPedido);

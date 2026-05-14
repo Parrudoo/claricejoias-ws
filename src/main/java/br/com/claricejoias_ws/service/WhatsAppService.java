@@ -46,8 +46,9 @@ public class WhatsAppService {
     @Value("${evolution.api.url}")
     private String evolutionApiUrl;
 
+
     @Value("${evolution.api.instance}")
-    private String instancia;
+    private String instanciaGlobal;
 
     @Value("${evolution.api.key}")
     private String apiKey;
@@ -63,7 +64,7 @@ public class WhatsAppService {
     // =========================================================================
     // 1. ENFILEIRAR MENSAGEM PARA LEADS (TEXTO)
     // =========================================================================
-    public void enviarMensagemTexto(LeadDTO lead, String texto, String operador) {
+    public void enviarMensagemTexto(LeadDTO lead, String texto, String operador, String instanciaRevendedor) {
         if (filaRepository.existsByLeadIdAndStatus(lead.getId(), StatusDisparo.PENDENTE)) {
             throw new RegraNegocioException("Operação negada: " + lead.getNome() + " já possui uma mensagem na fila aguardando disparo.");
         }
@@ -76,7 +77,7 @@ public class WhatsAppService {
         fila.setOperador(operador);
         fila.setStatus(StatusDisparo.PENDENTE);
         fila.setDataCriacao(LocalDateTime.now());
-
+        fila.setInstanciaWhatsapp(instanciaRevendedor != null ? instanciaRevendedor : instanciaGlobal);
         filaRepository.save(fila);
         System.out.println("Mensagem ENFILEIRADA para o lead: " + lead.getNome());
     }
@@ -84,7 +85,7 @@ public class WhatsAppService {
     // =========================================================================
     // NOVO: 1.1 ENFILEIRAR IMAGEM PARA LEADS (MÍDIA)
     // =========================================================================
-    public void enviarMensagemImagem(Lead lead, String legenda,String path, String operador) {
+    public void enviarMensagemImagem(Lead lead, String legenda,String path, String operador, String instanciaRevendedor) {
         FilaDisparo fila = new FilaDisparo();
         fila.setLead(lead);
         fila.setTexto(legenda); // A legenda vai no campo texto
@@ -92,6 +93,8 @@ public class WhatsAppService {
         fila.setOperador(operador);
         fila.setStatus(StatusDisparo.PENDENTE);
         fila.setDataCriacao(LocalDateTime.now());
+
+        fila.setInstanciaWhatsapp(instanciaRevendedor != null ? instanciaRevendedor : instanciaGlobal);
 
         filaRepository.save(fila);
         System.out.println("IMAGEM ENFILEIRADA para o lead: " + lead.getNome());
@@ -113,7 +116,7 @@ public class WhatsAppService {
     // =========================================================================
     // 2. ENFILEIRAR MENSAGEM PARA CLIENTES (COBRANÇA)
     // =========================================================================
-    public void enviarCobrancaCliente(Cliente cliente, String texto, String operador) {
+    public void enviarCobrancaCliente(Cliente cliente, String texto, String operador, String instanciaRevendedor) {
         if (filaCobrancaRepository.existsByClienteIdAndStatus(cliente.getId(), StatusDisparo.PENDENTE)) {
             throw new RegraNegocioException("Já existe uma cobrança na fila para " + cliente.getNome());
         }
@@ -135,37 +138,33 @@ public class WhatsAppService {
         fila.setOperador(operador);
         fila.setStatus(StatusDisparo.PENDENTE);
         fila.setDataCriacao(LocalDateTime.now());
+        fila.setInstanciaWhatsapp(instanciaRevendedor != null ? instanciaRevendedor : instanciaGlobal);
 
         filaCobrancaRepository.save(fila);
         System.out.println("COBRANÇA ENFILEIRADA para o cliente: " + cliente.getNome());
     }
 
     // =========================================================================
-    // 3. TRABALHADOR DE LEADS (MISTO: TEXTO E IMAGEM) - 15 SEGUNDOS
+    // 3. TRABALHADOR DE LEADS (MISTO: TEXTO E IMAGEM)
     // =========================================================================
     @Scheduled(fixedDelay = 15000)
     public void processarFilaDeDisparos() {
         Optional<FilaDisparo> disparoOptional = filaRepository.findFirstByStatusOrderByDataCriacaoAsc(StatusDisparo.PENDENTE);
 
-        if (disparoOptional.isEmpty()) {
-            return;
-        }
+        if (disparoOptional.isEmpty()) return;
 
         FilaDisparo disparoAtual = disparoOptional.get();
         Lead lead = disparoAtual.getLead();
         String numeroCorreto = lead.getWhatsapp();
 
         if (numeroCorreto == null || numeroCorreto.trim().isEmpty()) {
-            System.err.println("Fila FALHOU: O Lead (ID: " + lead.getId() + ") não possui número de WhatsApp válido.");
             disparoAtual.setStatus(StatusDisparo.ERRO);
-            disparoAtual.setMensagemErro("Número de WhatsApp é nulo ou vazio.");
+            disparoAtual.setMensagemErro("WhatsApp inválido.");
             filaRepository.save(disparoAtual);
             return;
         }
 
-        if (!numeroCorreto.startsWith("55")) {
-            numeroCorreto = "55" + numeroCorreto;
-        }
+        if (!numeroCorreto.startsWith("55")) numeroCorreto = "55" + numeroCorreto;
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -174,69 +173,45 @@ public class WhatsAppService {
         Map<String, Object> body;
         String urlDestino;
 
-        // VERIFICA SE O REGISTRO TEM IMAGEM
+        // RECUPERA A INSTÂNCIA DA FILA (Se for nula, usa a global)
+        String instanciaParaUso = disparoAtual.getInstanciaWhatsapp() != null ? disparoAtual.getInstanciaWhatsapp() : instanciaGlobal;
+
         if (disparoAtual.getUrlImagem() != null && !disparoAtual.getUrlImagem().isEmpty()) {
-
-            urlDestino = evolutionApiUrl + "/message/sendMedia/" + instancia;
-            String nomeArquivo = disparoAtual.getUrlImagem();
-
-            // --- COPIE E COLE ESTE BLOCO DE LOG AQUI ---
-            System.out.println("=========================================");
-            System.out.println("-> Tentando baixar do MinIO");
-            System.out.println("-> Arquivo procurado pelo Java: '" + nomeArquivo + "'");
-            System.out.println("=========================================");
-            // -------------------------------------------
+            // MANDA PRA INSTÂNCIA DINÂMICA
+            urlDestino = evolutionApiUrl + "/message/sendMedia/" + instanciaParaUso;
 
             try {
-                // A OPÇÃO NUCLEAR: Pega o Base64 direto do MinIO em vez de montar URL
-                String mediaBase64 = minioService.getImagemBase64(nomeArquivo);
-
+                String mediaBase64 = minioService.getImagemBase64(disparoAtual.getUrlImagem());
                 body = Map.of(
                         "number", numeroCorreto,
                         "mediaMessage", Map.of(
                                 "mediatype", "image",
                                 "caption", disparoAtual.getTexto() != null ? disparoAtual.getTexto() : "",
-                                "media", mediaBase64 // <- Agora a Evolution vai aceitar sem pestanejar!
+                                "media", mediaBase64
                         )
                 );
-                System.out.println("Processando envio de IMAGEM (via Base64) para " + numeroCorreto);
-
             } catch (Exception e) {
-                System.err.println("Fila FALHOU: Erro ao baixar imagem do MinIO: " + e.getMessage());
-
                 disparoAtual.setStatus(StatusDisparo.ERRO);
-                disparoAtual.setMensagemErro("Erro ao converter MinIO para Base64: " + e.getMessage());
+                disparoAtual.setMensagemErro("Erro MinIO: " + e.getMessage());
                 filaRepository.save(disparoAtual);
-                return; // Interrompe o envio deste disparo
+                return;
             }
-
         } else {
-            // SE NÃO TIVER IMAGEM, ENVIA TEXTO NORMAL
-            urlDestino = evolutionApiUrl + "/message/sendText/" + instancia;
-
+            // MANDA PRA INSTÂNCIA DINÂMICA
+            urlDestino = evolutionApiUrl + "/message/sendText/" + instanciaParaUso;
             body = Map.of(
                     "number", numeroCorreto,
-                    "textMessage", Map.of(
-                            "text", disparoAtual.getTexto() != null ? disparoAtual.getTexto() : ""
-                    )
+                    "textMessage", Map.of("text", disparoAtual.getTexto() != null ? disparoAtual.getTexto() : "")
             );
-            System.out.println("Processando envio de TEXTO para " + numeroCorreto);
         }
 
         try {
             restTemplate.postForEntity(urlDestino, new HttpEntity<>(body, headers), String.class);
-            System.out.println("Fila PROCESSADA com sucesso!");
-
             disparoAtual.setStatus(StatusDisparo.ENVIADO);
             filaRepository.save(disparoAtual);
 
-            HistoricoDisparo novoHistorico = new HistoricoDisparo(lead, LocalDateTime.now(), disparoAtual.getOperador());
-            historicoRepository.save(novoHistorico);
-
+            historicoRepository.save(new HistoricoDisparo(lead, LocalDateTime.now(), disparoAtual.getOperador()));
         } catch (Exception e) {
-            System.err.println("Fila FALHOU: Erro ao enviar para " + numeroCorreto);
-            System.err.println("Motivo: " + e.getMessage());
-
             disparoAtual.setStatus(StatusDisparo.ERRO);
             disparoAtual.setMensagemErro(e.getMessage());
             filaRepository.save(disparoAtual);
@@ -279,23 +254,18 @@ public class WhatsAppService {
     }
 
     // =========================================================================
-    // 4. TRABALHADOR DE COBRANÇAS EM SEGUNDO PLANO - 20 SEGUNDOS
+    // 4. TRABALHADOR DE COBRANÇAS
     // =========================================================================
     @Scheduled(fixedDelay = 20000)
     public void processarFilaDeCobranca() {
         Optional<FilaCobranca> cobrancaOpt = filaCobrancaRepository.findFirstByStatusOrderByDataCriacaoAsc(StatusDisparo.PENDENTE);
 
-        if (cobrancaOpt.isEmpty()) {
-            return;
-        }
+        if (cobrancaOpt.isEmpty()) return;
 
         FilaCobranca cobranca = cobrancaOpt.get();
         Cliente cliente = cobranca.getCliente();
         String numeroCorreto = cliente.getWhatsapp().replaceAll("\\D", "");
-
-        if (!numeroCorreto.startsWith("55")) {
-            numeroCorreto = "55" + numeroCorreto;
-        }
+        if (!numeroCorreto.startsWith("55")) numeroCorreto = "55" + numeroCorreto;
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -306,11 +276,12 @@ public class WhatsAppService {
                 "textMessage", Map.of("text", cobranca.getTexto())
         );
 
-        try {
-            String url = evolutionApiUrl + "/message/sendText/" + instancia;
-            restTemplate.postForEntity(url, new HttpEntity<>(body, headers), String.class);
-            System.out.println("Fila PROCESSADA: Cobrança enviada via Evolution para " + numeroCorreto);
+        // RECUPERA A INSTÂNCIA DA FILA
+        String instanciaParaUso = cobranca.getInstanciaWhatsapp() != null ? cobranca.getInstanciaWhatsapp() : instanciaGlobal;
+        String url = evolutionApiUrl + "/message/sendText/" + instanciaParaUso;
 
+        try {
+            restTemplate.postForEntity(url, new HttpEntity<>(body, headers), String.class);
             cobranca.setStatus(StatusDisparo.ENVIADO);
             filaCobrancaRepository.save(cobranca);
 
@@ -321,9 +292,6 @@ public class WhatsAppService {
             historicoCobrancaRepository.save(hist);
 
         } catch (Exception e) {
-            System.err.println("Fila de Cobrança FALHOU: Erro ao enviar para " + numeroCorreto);
-            System.err.println("Motivo: " + e.getMessage());
-
             cobranca.setStatus(StatusDisparo.ERRO);
             cobranca.setMensagemErro(e.getMessage());
             filaCobrancaRepository.save(cobranca);

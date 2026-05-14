@@ -27,4 +27,7 @@ public class FilaCobranca {
 
     private LocalDateTime dataCriacao;
     private String mensagemErro;
+    @Column(name = "instancia_whatsapp")
+    private String instanciaWhatsapp;
+
 }
