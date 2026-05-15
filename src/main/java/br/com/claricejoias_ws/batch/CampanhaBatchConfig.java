@@ -99,7 +99,7 @@ public class CampanhaBatchConfig {
             for (MensagemDTO msg : mensagens) {
                 try {
                     // Chama o serviço passando a entidade Lead convertida em DTO
-                    whatsAppService.enviarMensagemTexto(modelMapper.map(msg.getLead(), LeadDTO.class) , msg.getTexto(),"BATCH");
+                    whatsAppService.enviarMensagemTexto(modelMapper.map(msg.getLead(), LeadDTO.class) , msg.getTexto(),"BATCH",null);
 
                     // Pausa de 30 segundos mantida APENAS para o processo em lote
                     Thread.sleep(30000);

@@ -65,8 +65,9 @@ public class ClienteController {
 
     @Operation(summary = "Listar clientes da revendedora", description = "Retorna apenas os clientes vinculados a um revendedor específico.")
     @GetMapping("/revendedor/{revendedorId}")
-    public ResponseEntity<List<Cliente>> listarPorRevendedor(@PathVariable String revendedorId) {
-        List<Cliente> clientes = clienteRepository.findByRevendedorId(revendedorId);
+    public ResponseEntity<List<Cliente>> listarPorRevendedor(@AuthenticationPrincipal Jwt jwt) {
+        String usuarioId = (jwt != null) ? jwt.getSubject() : null;
+        List<Cliente> clientes = clienteRepository.findByRevendedorId(usuarioId);
         return ResponseEntity.ok(clientes);
     }
 
@@ -88,9 +89,10 @@ public class ClienteController {
     @PostMapping("/{id}/cobranca")
     public ResponseEntity<String> registrarCobranca(
             @PathVariable Long id,
-            @RequestBody Map<String, String> payload) {
-
-        clienteService.registrarCobranca(id, autenticacaoService.getUsername());
+            @RequestBody Map<String, String> payload,
+            @AuthenticationPrincipal Jwt jwt) {
+        String usuarioId = (jwt != null) ? jwt.getSubject() : null;
+        clienteService.registrarCobranca(id, autenticacaoService.getUsername(), usuarioId);
 
         return ResponseEntity.ok().build();
 

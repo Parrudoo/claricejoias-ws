@@ -7,6 +7,7 @@ import br.com.claricejoias_ws.model.*;
 import br.com.claricejoias_ws.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.StaleObjectStateException;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.retry.annotation.Backoff;
@@ -33,6 +34,10 @@ public class ClienteService {
     private final PedidoRepository pedidoRepository; // Alterado de VendaRepository
     private final ParcelaRepository parcelaRepository;
     private final LeadRepository leadRepository;
+    private final RevendedorService revendedorService;
+
+    @Value("${evolution.api.instance}")
+    private String instanciaGlobal;
 
     @Transactional(readOnly = true)
     public List<ClienteResponseDTO> listarTodos(String userId, boolean isAdmin) {
@@ -138,10 +143,12 @@ public class ClienteService {
     }
 
     @Transactional
-    public void registrarCobranca(Long clienteId, String funcionario) {
+    public void registrarCobranca(Long clienteId, String funcionario, String usuarioId) {
         Cliente cliente = clienteRepository.findById(clienteId)
                 .orElseThrow(() -> new RuntimeException("Cliente não encontrado!"));
 
+            Revendedor revendedor = revendedorService.findById(usuarioId)
+                    .orElseThrow(() -> new RegraNegocioException(""));
         // Alterado de getVendas() para getPedidos()
         BigDecimal totalDevido = cliente.getPedidos().stream()
                 .flatMap(pedido -> pedido.getParcelasDetalhadas().stream())
@@ -160,7 +167,7 @@ public class ClienteService {
                 "Consta em nosso sistema um saldo pendente no valor de *R$ " + valorFormatado + "*.\n\n" +
                 "Gostaria de verificar uma previsão de pagamento para podermos dar baixa no sistema? Qualquer dúvida, estamos à disposição!";
 
-        whatsAppService.enviarCobrancaCliente(cliente, mensagem, autenticacaoService.getUsername());
+        whatsAppService.enviarCobrancaCliente(cliente, mensagem, autenticacaoService.getUsername(), revendedor.getInstanciaWhatsapp());
 
         HistoricoCobranca historico = new HistoricoCobranca();
         historico.setCliente(cliente);

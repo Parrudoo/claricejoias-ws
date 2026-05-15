@@ -3,15 +3,15 @@ package br.com.claricejoias_ws.controller;
 import br.com.claricejoias_ws.dto.LeadDTO;
 import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.Lead;
-import br.com.claricejoias_ws.service.AutenticacaoService;
-import br.com.claricejoias_ws.service.LeadService;
-import br.com.claricejoias_ws.service.MinioService;
-import br.com.claricejoias_ws.service.WhatsAppService;
+import br.com.claricejoias_ws.model.Revendedor;
+import br.com.claricejoias_ws.service.*;
 // Supondo que você tenha um RevendedorService para buscar a instância dele
 // import br.com.claricejoias_ws.service.RevendedorService;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,17 +27,19 @@ public class MensagemController {
     private final AutenticacaoService autenticacaoService;
     private final MinioService minioService;
     private final ModelMapper modelMapper;
+    private final RevendedorService revendedorService;
 
     @PostMapping("/disparar")
-    public ResponseEntity<String> dispararMensagem(@RequestBody MensagemRequestDTO request) {
-
+    public ResponseEntity<String> dispararMensagem(@RequestBody MensagemRequestDTO request,
+    @AuthenticationPrincipal Jwt jwt) {
+        String usuarioId = (jwt != null) ? jwt.getSubject() : null;
         LeadDTO lead = leadService.buscarPorId(request.leadId());
         String operador = autenticacaoService.getUsername();
 
-        // IDEAL: Buscar a instância vinculada ao Operador logado
-        // String instanciaWhatsApp = revendedorService.buscarPorEmail(operador).getInstanciaWhatsapp();
-        // Por enquanto, vou deixar null para ele usar a global, ou você pode substituir pela lógica acima
-        String instanciaWhatsApp = null;
+         Revendedor revendedor = revendedorService.findById(usuarioId)
+                 .orElseThrow(()-> new RegraNegocioException("Instancia não encontrada para esse Usuario!"));
+
+
 
         // 1. Monta o texto
         StringBuilder textoIntro = new StringBuilder();
@@ -52,7 +54,7 @@ public class MensagemController {
         textoIntro.append("Temos uma condição exclusiva liberada para você finalizar seu pedido hoje. Gostaria de conferir as opções?");
 
         // 2. Dispara a mensagem (Passando a instância)
-        whatsAppService.enviarMensagemTexto(lead, textoIntro.toString(), operador, instanciaWhatsApp);
+        whatsAppService.enviarMensagemTexto(lead, textoIntro.toString(), operador, revendedor.getInstanciaWhatsapp());
 
         if (lead.getItens() != null && !lead.getItens().isEmpty()) {
             for (var item : lead.getItens()) {
@@ -65,7 +67,7 @@ public class MensagemController {
                         String legendaDaFoto = "💍 *" + produto.getNome() + "*";
 
                         // Chama o envio de mídia (Passando a instância)
-                        whatsAppService.enviarMensagemImagem(modelMapper.map(lead, Lead.class), legendaDaFoto, path, operador, instanciaWhatsApp);
+                        whatsAppService.enviarMensagemImagem(modelMapper.map(lead, Lead.class), legendaDaFoto, path, operador, revendedor.getInstanciaWhatsapp());
 
                     } catch (Exception e) {
                         System.out.println("Erro ao agendar imagem: " + e.getMessage());
@@ -73,7 +75,7 @@ public class MensagemController {
                 } else {
                     String textoSemFoto = "💍 *" + produto.getNome() + "* (Imagem indisponível)";
                     // Passando a instância
-                    whatsAppService.enviarMensagemTexto(lead, textoSemFoto, operador, instanciaWhatsApp);
+                    whatsAppService.enviarMensagemTexto(lead, textoSemFoto, operador, revendedor.getInstanciaWhatsapp());
                 }
             }
         }
