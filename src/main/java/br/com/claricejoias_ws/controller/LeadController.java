@@ -84,9 +84,14 @@ public class LeadController {
     public ResponseEntity<Lead> capturarLead(
             @RequestBody LeadRequestDTO dto,
             @RequestHeader(value = "X-Visitor-ID", required = false) String visitorId,
-            @AuthenticationPrincipal Jwt jwt) {
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) String revendedorId) {
+
         String usuarioId = (jwt != null) ? jwt.getSubject() : null;
-        Lead salvo = leadService.processarNovoLead(dto, visitorId,usuarioId);
+
+        // Passando o revendedorId para dentro da máquina de processamento
+        Lead salvo = leadService.processarNovoLead(dto, visitorId, usuarioId, revendedorId);
+
         return ResponseEntity.status(HttpStatus.CREATED).body(salvo);
     }
 

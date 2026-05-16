@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.lang.ScopedValue;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,4 +25,12 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
     boolean existsByWhatsapp(String whatsapp);
     boolean existsByVisitorId(String visitorId);
     Optional<Lead> findFirstByVisitorIdOrderByIdDesc(String visitorId);
+
+    Optional<Lead> findFirstByVisitorIdAndRevendedorIsNullOrderByIdDesc(String visitorId);
+
+    Optional<Lead> findFirstByVisitorIdAndRevendedorIdOrderByIdDesc(String visitorId, String revendedorId);
+
+    Optional<Lead> findByWhatsappAndRevendedorIsNull(String whatsapp);
+
+    Optional<Lead> findByWhatsappAndRevendedorId(String whatsapp, String revendedorId);
 }

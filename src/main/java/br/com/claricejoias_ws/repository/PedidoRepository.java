@@ -53,6 +53,23 @@ public interface PedidoRepository extends JpaRepository<Pedido, Long> {
 
     Optional<Pedido> findFirstByVisitorIdAndStatusOrderByIdDesc(String visitorId, StatusPedido statusPedido);
 
+    // Busca o carrinho da filial (onde o revendedor tem um ID específico)
+    Optional<Pedido> findFirstByUsuarioIdAndStatusAndRevendedorIdOrderByIdDesc(
+            String usuarioId,
+            StatusPedido status,
+            String revendedorId // Mude para Long ou UUID se o ID do seu revendedor não for String
+    );
+
+    // Busca o carrinho da Loja Matriz (onde a coluna do revendedor está NULA no banco)
+    Optional<Pedido> findFirstByUsuarioIdAndStatusAndRevendedorIsNullOrderByIdDesc(
+            String usuarioId,
+            StatusPedido status
+    );
+
     // Busca os pedidos de um usuário específico de forma paginada
     Page<Pedido> findByUsuarioId(String usuarioId, Pageable pageable);
+
+    Optional<Pedido> findFirstByVisitorIdAndStatusAndRevendedorIsNullOrderByIdDesc(String visitorId, StatusPedido statusPedido);
+
+    Optional<Pedido> findFirstByVisitorIdAndStatusAndRevendedorIdOrderByIdDesc(String visitorId, StatusPedido statusPedido, String revendedorId);
 }

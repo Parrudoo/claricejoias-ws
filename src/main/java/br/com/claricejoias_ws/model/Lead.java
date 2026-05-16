@@ -33,6 +33,10 @@ public class Lead {
     private String cupomGerado;
     private LocalDateTime dataCadastro;
 
+    @ManyToOne
+    @JoinColumn(name = "revendedor_id")
+    private Revendedor revendedor;
+
     @OneToMany(mappedBy = "lead", cascade = CascadeType.ALL)
     @OrderBy("dataCriacao DESC")
     private List<Pedido> pedidos = new ArrayList<>();

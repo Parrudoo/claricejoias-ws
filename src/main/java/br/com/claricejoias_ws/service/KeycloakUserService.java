@@ -3,6 +3,7 @@ package br.com.claricejoias_ws.service;
 import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.Cliente;
 import br.com.claricejoias_ws.model.Lead;
+import br.com.claricejoias_ws.model.Revendedor;
 import br.com.claricejoias_ws.repository.ClienteRepository;
 import br.com.claricejoias_ws.repository.LeadRepository;
 import jakarta.ws.rs.core.Response;
@@ -33,30 +34,63 @@ public class KeycloakUserService {
      * Agora recebe o visitorId para aproveitar os dados do Lead!
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW) // Garante que se o banco falhar, o processo reverta com segurança
-    public String criarUsuarioCliente(String email, String senha, String nomeCompleto, String whatsapp) {
+    public String criarUsuarioCliente(String email, String senha, String nomeCompleto, String whatsapp, String revendedorId) {
         String whatsappLimpo = (whatsapp != null) ? whatsapp.replaceAll("[^0-9]", "") : null;
+        boolean isLojaMatriz = (revendedorId == null || revendedorId.trim().isEmpty());
 
-        if (clienteRepository.existsByWhatsapp(whatsappLimpo)) {
-            throw new RegraNegocioException("Este número de WhatsApp já está vinculado a outra conta. Faça login ou recupere a senha.");
+        // 1. Verifica se já existe o cliente NESTA loja específica
+        boolean existeNaLoja = isLojaMatriz
+                ? clienteRepository.existsByWhatsappAndRevendedorIsNull(whatsappLimpo)
+                : clienteRepository.existsByWhatsappAndRevendedorId(whatsappLimpo, revendedorId);
+
+        if (existeNaLoja) {
+            throw new RegraNegocioException("Este número de WhatsApp já possui cadastro nesta loja. Por favor, faça login.");
         }
 
-        // 1 e 2. Cria o usuário no Keycloak
-        UserRepresentation user = criarRepresentacaoBasica(email, nomeCompleto, whatsappLimpo);
-        Response response = keycloak.realm(REALM_NAME).users().create(user);
-        String userId = processarResposta(response, senha, "cliente");
+        String userId;
 
-        // 3. Salva o cliente oficial no PostgreSQL local
-        Cliente novoCliente = new Cliente();
-        novoCliente.setUsuarioId(userId);
-        novoCliente.setEmail(email);
-        novoCliente.setWhatsapp(whatsappLimpo);
-        novoCliente.setNome(nomeCompleto);
+        // 2. Verifica globalmente se o usuário JÁ TEM uma identidade no Keycloak (já comprou em outra filial)
+        boolean existeEmOutraLoja = clienteRepository.existsByWhatsapp(whatsappLimpo);
 
-        clienteRepository.save(novoCliente);
+        if (existeEmOutraLoja) {
+            // Se ele já existe no ecossistema, nós reaproveitamos a identidade do Keycloak!
+            // (Você não tenta criar no Keycloak de novo, só pega o ID que já está no seu banco)
+            Cliente clienteAntigo = clienteRepository.findFirstByWhatsapp(whatsappLimpo)
+                    .orElseThrow(() -> new RuntimeException("Inconsistência de dados."));
+            userId = clienteAntigo.getUsuarioId();
 
-        System.out.println("Cliente " + nomeCompleto + " inserido no Keycloak e no PostgreSQL!");
+            System.out.println("Cliente " + nomeCompleto + " já tinha login. Reaproveitando ID: " + userId);
+        } else {
+            // Se é totalmente novo, cria no Keycloak
+            UserRepresentation user = criarRepresentacaoBasica(email, nomeCompleto, whatsappLimpo);
 
-        // Retorna o ID para que quem chamou possa vincular a Leads, Pedidos, etc.
+            // Opcional: Adicionar o atributo da loja no Keycloak como discutimos na etapa anterior
+            if (!isLojaMatriz) {
+                Map<String, List<String>> attrs = user.getAttributes();
+                if (attrs == null) attrs = new HashMap<>();
+                attrs.put("revendedor_id", Collections.singletonList(revendedorId));
+                user.setAttributes(attrs);
+            }
+
+            Response response = keycloak.realm(REALM_NAME).users().create(user);
+            userId = processarResposta(response, senha, "cliente");
+        }
+
+        // 3. Sempre cria um NOVO PERFIL DE CLIENTE no PostgreSQL isolado para esta loja
+        Cliente novoClienteDaLoja = new Cliente();
+        novoClienteDaLoja.setUsuarioId(userId);
+        novoClienteDaLoja.setEmail(email);
+        novoClienteDaLoja.setWhatsapp(whatsappLimpo);
+        novoClienteDaLoja.setNome(nomeCompleto);
+
+        if (!isLojaMatriz) {
+            Revendedor revendedor = new Revendedor();
+            revendedor.setId(revendedorId);
+            novoClienteDaLoja.setRevendedor(revendedor);
+        }
+
+        clienteRepository.save(novoClienteDaLoja);
+
         return userId;
     }
 

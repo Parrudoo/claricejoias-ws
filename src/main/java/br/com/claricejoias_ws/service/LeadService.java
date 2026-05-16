@@ -121,60 +121,99 @@ public class LeadService {
             maxAttempts = 3,
             backoff = @Backoff(delay = 150)
     )
-    public Lead processarNovoLead(LeadRequestDTO dto, String visitorId, String usuarioIdOrigem) {
+    public Lead processarNovoLead(LeadRequestDTO dto, String visitorId, String usuarioIdOrigem, String revendedorId) {
         String whatsappLimpo = dto.getWhatsapp().replaceAll("[^0-9]", "");
         boolean estaLogado = (usuarioIdOrigem != null && !usuarioIdOrigem.trim().isEmpty());
+        boolean isLojaMatriz = (revendedorId == null || revendedorId.trim().isEmpty());
 
         String finalUsuarioId = usuarioIdOrigem;
-        String senhaGerada = null; // Guarda a senha caso a conta seja criada no checkout
+        String senhaGerada = null;
 
-        // 1. Cria a conta se necessário
+        // 1. Cria a conta se necessário (Enviando a loja para o KeycloakService)
         if (dto.isCriarConta() && !estaLogado) {
             senhaGerada = String.format("%06d", new Random().nextInt(999999));
             String emailKeycloak = whatsappLimpo + "@claricejoias.com.br";
 
-            // Retorna o ID gerado pelo Keycloak
-            finalUsuarioId = keycloakUserService.criarUsuarioCliente(emailKeycloak, senhaGerada, dto.getNome(), whatsappLimpo);
+            finalUsuarioId = keycloakUserService.criarUsuarioCliente(emailKeycloak, senhaGerada, dto.getNome(), whatsappLimpo, revendedorId);
         }
 
-        // 2. BUSCA INTELIGENTE DO LEAD (Com a trava do PC público)
-        Lead lead = obterOuPromoverLeadSeguro(whatsappLimpo, visitorId, finalUsuarioId);
+        // 2. BUSCA INTELIGENTE DO LEAD (Agora isolada por Loja/Revendedor)
+        Lead lead = obterOuPromoverLeadSeguro(whatsappLimpo, visitorId, finalUsuarioId, revendedorId);
 
-        // Atualiza os dados do Lead
+        // Atualiza os dados
         lead.setWhatsapp(whatsappLimpo);
         lead.setNome(dto.getNome());
         lead.setAtivo(true);
         if (visitorId != null) lead.setVisitorId(visitorId);
         if (finalUsuarioId != null) lead.setUsuarioId(finalUsuarioId);
 
-        lead = repository.save(lead); // <--- O ÚNICO SAVE DO LEAD
+        // VINCULA O LEAD À LOJA ANTES DE SALVAR
+        if (!isLojaMatriz) {
+            Revendedor revendedor = new Revendedor();
+            revendedor.setId(revendedorId);
+            lead.setRevendedor(revendedor);
+        }
 
-        // 3. Busca o "Carrinho" (que já é um Pedido)
-        // CORREÇÃO AQUI: Usamos o usuarioIdOrigem, pois foi com ele (ou com o visitorId) que o carrinho foi montado!
-        Pedido carrinhoPedido = carrinhoService.obterOuCriarCarrinho(visitorId, usuarioIdOrigem,null);
+        lead = repository.save(lead);
+
+        // 3. Busca o "Carrinho" (Usando o revendedorId que já implementamos antes!)
+        Pedido carrinhoPedido = carrinhoService.obterOuCriarCarrinho(visitorId, usuarioIdOrigem, revendedorId);
 
         if (carrinhoPedido.getItens().isEmpty()) {
             throw new RegraNegocioException("O carrinho está vazio.");
         }
 
-        // 4. Atualiza o Pedido existente
+        // 4. Atualiza o Pedido
         carrinhoPedido.setLead(lead);
         carrinhoPedido.setStatus(StatusPedido.AGUARDANDO_WHATSAPP);
         carrinhoPedido.setMetodoPagamento(dto.getMetodoPagamento() != null ? dto.getMetodoPagamento() : "PIX");
         carrinhoPedido.setDataAtualizacao(LocalDateTime.now());
 
-        // BÔNUS: Se a conta acabou de ser criada, aproveita para amarrar o pedido ao ID do usuário do Keycloak
         if (finalUsuarioId != null) {
             carrinhoPedido.setUsuarioId(finalUsuarioId);
         }
 
-        // O total já é calculado pelo CarrinhoService ou no @PrePersist do Pedido
         pedidoRepository.save(carrinhoPedido);
 
-        // 5. Fluxo de notificações (Limpamos a assinatura do método para receber apenas o necessário)
+        // 5. Fluxo de notificações
         enviarNotificacaoFinal(dto, lead, carrinhoPedido, whatsappLimpo, senhaGerada);
 
         return lead;
+    }
+
+    // =======================================================================
+// O MÉTODO SEGURO AGORA VERIFICA A LOJA
+// =======================================================================
+    private Lead obterOuPromoverLeadSeguro(String whatsapp, String visitorId, String usuarioId, String revendedorId) {
+        boolean isLojaMatriz = (revendedorId == null || revendedorId.trim().isEmpty());
+
+        // 1. Prioridade Máxima: O WhatsApp DENTRO DA MESMA LOJA
+        Optional<Lead> leadPorWhatsapp = isLojaMatriz
+                ? repository.findByWhatsappAndRevendedorIsNull(whatsapp)
+                : repository.findByWhatsappAndRevendedorId(whatsapp, revendedorId);
+
+        if (leadPorWhatsapp.isPresent()) {
+            return leadPorWhatsapp.get();
+        }
+
+        // 2. Rastro anônimo DENTRO DA MESMA LOJA
+        if (visitorId != null && !visitorId.trim().isEmpty()) {
+            Lead leadDoNavegador = isLojaMatriz
+                    ? repository.findFirstByVisitorIdAndRevendedorIsNullOrderByIdDesc(visitorId).orElse(null)
+                    : repository.findFirstByVisitorIdAndRevendedorIdOrderByIdDesc(visitorId, revendedorId).orElse(null);
+
+            if (leadDoNavegador != null) {
+                // A TRAVA DO COMPUTADOR PÚBLICO
+                if (leadDoNavegador.getUsuarioId() != null && !leadDoNavegador.getUsuarioId().equals(usuarioId)) {
+                    return new Lead();
+                } else {
+                    return leadDoNavegador;
+                }
+            }
+        }
+
+        // 3. Se não achou, nasce um novo zerado
+        return new Lead();
     }
 
     // Método de notificação ajustado para usar a 'senhaGerada' e saber se envia ou não as credenciais

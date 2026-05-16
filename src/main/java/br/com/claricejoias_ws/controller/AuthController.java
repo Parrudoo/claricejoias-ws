@@ -47,12 +47,12 @@ public class AuthController {
         try {
 
             // 2. Repassando o visitorId para o serviço sincronizar tudo no banco de dados!
-            userService.criarUsuarioCliente(
-                    dados.get("email"),
-                    dados.get("senha"),
-                    dados.get("nome"),
-                    dados.get("whatsapp")
-            );
+//            userService.criarUsuarioCliente(
+//                    dados.get("email"),
+//                    dados.get("senha"),
+//                    dados.get("nome"),
+//                    dados.get("whatsapp")
+//            );
 
             return ResponseEntity.status(HttpStatus.CREATED).body(Collections.singletonMap("mensagem", "Conta criada com sucesso!"));
         } catch (RuntimeException e) {

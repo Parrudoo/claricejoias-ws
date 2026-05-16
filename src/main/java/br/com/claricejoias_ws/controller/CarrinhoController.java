@@ -19,12 +19,13 @@ public class CarrinhoController {
     @GetMapping
     public ResponseEntity<CarrinhoDTO> buscarMeuCarrinho(
             @RequestHeader(value = "X-Visitor-ID", required = false) String visitorId,
+            @RequestParam(required = false) String revendedorId,
             @AuthenticationPrincipal Jwt jwt) {
 
         String usuarioId = (jwt != null) ? jwt.getSubject() : null;
 
         // Esse método já deixamos retornando o DTO pronto direto do Service
-        CarrinhoDTO carrinho = carrinhoService.consultarCarrinhoAtualDTO(visitorId, usuarioId);
+        CarrinhoDTO carrinho = carrinhoService.consultarCarrinhoAtualDTO(visitorId, usuarioId, revendedorId);
 
         if (carrinho == null) {
             return ResponseEntity.noContent().build();
@@ -51,13 +52,15 @@ public class CarrinhoController {
     @DeleteMapping("/remover/{produtoId}")
     public ResponseEntity<CarrinhoDTO> removerItem(
             @RequestHeader(value = "X-Visitor-ID", required = false) String visitorId,
+
             @AuthenticationPrincipal Jwt jwt,
-            @PathVariable Long produtoId) {
+            @PathVariable Long produtoId,
+            @RequestParam(required = false) String revendedorId) {
 
         String usuarioId = (jwt != null) ? jwt.getSubject() : null;
 
         // O service agora devolve um Pedido
-        Pedido carrinhoAtualizado = carrinhoService.removerItem(visitorId, usuarioId, produtoId);
+        Pedido carrinhoAtualizado = carrinhoService.removerItem(visitorId, usuarioId, produtoId, revendedorId);
 
         return ResponseEntity.ok(carrinhoService.convertToDTO(carrinhoAtualizado));
     }

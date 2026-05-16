@@ -32,7 +32,6 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class CarrinhoService {
 
-    // 👇 Agora usamos o PedidoRepository!
     private final PedidoRepository pedidoRepository;
     private final ProdutoRepository produtoRepository;
     private final ModelMapper modelMapper;
@@ -59,17 +58,37 @@ public class CarrinhoService {
     }
 
     @Transactional(readOnly = true)
-    public CarrinhoDTO consultarCarrinhoAtualDTO(String visitorId, String usuarioId) {
+    public CarrinhoDTO consultarCarrinhoAtualDTO(String visitorId, String usuarioId, String revendedorId) {
         Optional<Pedido> carrinhoOpt = Optional.empty();
 
+        // Descobre se é compra na matriz (parâmetro nulo ou vazio)
+        boolean isLojaMatriz = (revendedorId == null || revendedorId.trim().isEmpty());
+
         if (isUsuarioLogado(usuarioId)) {
-            carrinhoOpt = pedidoRepository.findFirstByUsuarioIdAndStatusOrderByIdDesc(usuarioId, StatusPedido.CARRINHO);
-        } else if (visitorId != null) {
-            carrinhoOpt = pedidoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(visitorId, StatusPedido.CARRINHO);
+            // CADEIA DO USUÁRIO LOGADO
+            if (isLojaMatriz) {
+                carrinhoOpt = pedidoRepository.findFirstByUsuarioIdAndStatusAndRevendedorIsNullOrderByIdDesc(
+                        usuarioId, StatusPedido.CARRINHO);
+            } else {
+                carrinhoOpt = pedidoRepository.findFirstByUsuarioIdAndStatusAndRevendedorIdOrderByIdDesc(
+                        usuarioId, StatusPedido.CARRINHO, revendedorId);
+            }
+
+        } else if (visitorId != null && !visitorId.trim().isEmpty()) {
+            // CADEIA DO VISITANTE (ANÔNIMO)
+            if (isLojaMatriz) {
+                carrinhoOpt = pedidoRepository.findFirstByVisitorIdAndStatusAndRevendedorIsNullOrderByIdDesc(
+                        visitorId, StatusPedido.CARRINHO);
+            } else {
+                carrinhoOpt = pedidoRepository.findFirstByVisitorIdAndStatusAndRevendedorIdOrderByIdDesc(
+                        visitorId, StatusPedido.CARRINHO, revendedorId);
+            }
         }
 
         return carrinhoOpt.map(this::convertToDTO).orElse(null);
     }
+
+
     public Pedido consultarPedidoAtualEntidade(String visitorId, String usuarioId) {
         Optional<Pedido> carrinhoOpt = Optional.empty();
 
@@ -161,27 +180,54 @@ public class CarrinhoService {
     }
 
     private Pedido processarCarrinhoDeUsuario(String visitorId, String usuarioId, String revendedorId) {
-        Pedido carrinhoOficial = pedidoRepository.findFirstByUsuarioIdAndStatusOrderByIdDesc(usuarioId, StatusPedido.CARRINHO)
-                .orElseGet(() -> criarCarrinho(null, usuarioId)); // Cria novo se não achar
+        boolean isLojaMatriz = (revendedorId == null || revendedorId.trim().isEmpty());
+        Pedido carrinhoOficial;
 
-        // REGRA DE OURO: Atualiza o revendedor do carrinho se o cliente acessou por um link novo
-        vincularRevendedor(carrinhoOficial, revendedorId);
+        // 1. Busca o carrinho correto (Matriz ou Revendedor) ou cria um novo
+        if (isLojaMatriz) {
+            carrinhoOficial = pedidoRepository.findFirstByUsuarioIdAndStatusAndRevendedorIsNullOrderByIdDesc(usuarioId, StatusPedido.CARRINHO)
+                    .orElseGet(() -> criarCarrinho(null, usuarioId, null)); // Passando null para o revendedor
+        } else {
+            carrinhoOficial = pedidoRepository.findFirstByUsuarioIdAndStatusAndRevendedorIdOrderByIdDesc(usuarioId, StatusPedido.CARRINHO, revendedorId)
+                    .orElseGet(() -> criarCarrinho(null, usuarioId, revendedorId)); // Passando o ID do revendedor
+        }
 
+        // 2. A "REGRA DE OURO" (vincularRevendedor) não muda mais a posse de um carrinho único,
+        // mas você pode mantê-la caso ela faça validações extras ou popule o objeto Revendedor na memória.
+        // Se o método apenas fazia um setRevendedor(), ele se torna opcional aqui, pois o criarCarrinho já deve fazer isso.
+        if (!isLojaMatriz) {
+            vincularRevendedor(carrinhoOficial, revendedorId);
+        }
+
+        // 3. Mescla os itens caso o usuário tenha adicionado algo no carrinho antes de fazer o login
         if (visitorId != null) {
             mesclarCarrinhoAnonimoNoOficial(visitorId, carrinhoOficial);
         }
 
+        // 4. Salva o resultado final
         return pedidoRepository.saveAndFlush(carrinhoOficial);
     }
 
 
     private Pedido processarCarrinhoAnonimo(String visitorId, String revendedorId) {
-        Pedido carrinhoAnonimo = pedidoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(visitorId, StatusPedido.CARRINHO)
-                .orElseGet(() -> criarCarrinho(visitorId, null));
+        boolean isLojaMatriz = (revendedorId == null || revendedorId.trim().isEmpty());
+        Pedido carrinhoAnonimo;
 
-        // Atualiza o revendedor também para clientes anônimos
-        vincularRevendedor(carrinhoAnonimo, revendedorId);
+        // 1. Busca o carrinho correto do visitante (Matriz ou Revendedor) ou cria um novo
+        if (isLojaMatriz) {
+            carrinhoAnonimo = pedidoRepository.findFirstByVisitorIdAndStatusAndRevendedorIsNullOrderByIdDesc(visitorId, StatusPedido.CARRINHO)
+                    .orElseGet(() -> criarCarrinho(visitorId, null, null)); // Matriz (sem revendedor)
+        } else {
+            carrinhoAnonimo = pedidoRepository.findFirstByVisitorIdAndStatusAndRevendedorIdOrderByIdDesc(visitorId, StatusPedido.CARRINHO, revendedorId)
+                    .orElseGet(() -> criarCarrinho(visitorId, null, revendedorId)); // Com Revendedor
+        }
 
+        // 2. Garante o vínculo caso o método vincularRevendedor faça validações adicionais
+        if (!isLojaMatriz) {
+            vincularRevendedor(carrinhoAnonimo, revendedorId);
+        }
+
+        // 3. Salva as alterações no banco e retorna
         return pedidoRepository.saveAndFlush(carrinhoAnonimo);
     }
 
@@ -201,17 +247,26 @@ public class CarrinhoService {
         }
     }
 
-    private Pedido criarCarrinho(String visitorId, String usuarioId) {
+    private Pedido criarCarrinho(String visitorId, String usuarioId, String revendedorId) {
         Pedido novo = new Pedido();
         novo.setVisitorId(visitorId);
         novo.setUsuarioId(usuarioId);
         novo.setStatus(StatusPedido.CARRINHO); // Define como carrinho
         novo.setOrigem(OrigemPedido.ECOMMERCE); // Define a origem
         novo.setDataCriacao(LocalDateTime.now());
-        // Obs: Não definimos metodo_pagamento ainda, pois é só um carrinho
-        // Dependendo de como você configurou o banco, se 'metodo_pagamento' for NOT NULL,
-        // coloque um valor padrão temporário como "PENDENTE" aqui.
         novo.setMetodoPagamento("PENDENTE");
+
+        // Vincula o revendedor se o ID foi informado (Não é a Matriz)
+        if (revendedorId != null && !revendedorId.trim().isEmpty()) {
+            Revendedor revendedor = new Revendedor();
+
+            // Dica: Se o ID na sua entidade Revendedor for do tipo UUID em vez de String,
+            // você precisará converter aqui usando: UUID.fromString(revendedorId)
+            revendedor.setId(revendedorId);
+
+            novo.setRevendedor(revendedor);
+        }
+
         return pedidoRepository.saveAndFlush(novo);
     }
 
@@ -309,8 +364,8 @@ public class CarrinhoService {
             maxAttempts = 3,
             backoff = @Backoff(delay = 150)
     )
-    public Pedido removerItem(String visitorId, String usuarioId, Long produtoId) {
-        Pedido carrinho = obterOuCriarCarrinho(visitorId, usuarioId,null);
+    public Pedido removerItem(String visitorId, String usuarioId, Long produtoId, String revendedorId) {
+        Pedido carrinho = obterOuCriarCarrinho(visitorId, usuarioId,revendedorId);
         carrinho.getItens().removeIf(item -> item.getProduto().getId().equals(produtoId));
         return pedidoRepository.saveAndFlush(carrinho);
     }
