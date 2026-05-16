@@ -21,8 +21,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RevendedorController {
 
-    @Autowired
-    private RevendedorRepository repository;
+    private final RevendedorRepository repository;
     private final FinanceiroRevendedorService financeiroRevendedorService;
 
     @Operation(summary = "Vincular novo revendedor", description = "Cria um registro local para um usuário já cadastrado no Keycloak utilizando seu UUID.")
@@ -70,5 +69,13 @@ public class RevendedorController {
         AcertoRevendedorDTO acerto = financeiroRevendedorService.calcularAcertoMensal(revendedorId, mes, ano);
 
         return ResponseEntity.ok(acerto);
+    }
+
+    @Operation(summary = "Buscar revendedor por Slug", description = "Busca os detalhes de um revendedor pela sua URL amigável (slug).")
+    @GetMapping("/slug/{slug}")
+    public ResponseEntity<Revendedor> buscarPorSlug(@PathVariable String slug) {
+        return repository.findBySlug(slug)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 }

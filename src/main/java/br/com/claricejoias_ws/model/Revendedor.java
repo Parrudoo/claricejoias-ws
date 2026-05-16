@@ -15,6 +15,7 @@ public class Revendedor {
     private String nome;
     private String email;
     private Boolean ativo = true;
+    @Column(unique = true, nullable = false)
     private String slug;
 
 

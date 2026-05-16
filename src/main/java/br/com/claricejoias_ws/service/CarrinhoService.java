@@ -9,8 +9,10 @@ import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.ItemPedido;
 import br.com.claricejoias_ws.model.Pedido;
 import br.com.claricejoias_ws.model.Produto;
+import br.com.claricejoias_ws.model.Revendedor;
 import br.com.claricejoias_ws.repository.PedidoRepository;
 import br.com.claricejoias_ws.repository.ProdutoRepository;
+import br.com.claricejoias_ws.repository.RevendedorRepository;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.StaleObjectStateException;
 import org.modelmapper.ModelMapper;
@@ -34,6 +36,7 @@ public class CarrinhoService {
     private final PedidoRepository pedidoRepository;
     private final ProdutoRepository produtoRepository;
     private final ModelMapper modelMapper;
+    private final RevendedorRepository revendedorRepository;
 
 
     @Transactional
@@ -46,11 +49,13 @@ public class CarrinhoService {
             maxAttempts = 3,
             backoff = @Backoff(delay = 150)
     )
-    public Pedido obterOuCriarCarrinho(String visitorId, String usuarioId) {
+    public Pedido obterOuCriarCarrinho(String visitorId, String usuarioId, String revendedorId) {
         if (isUsuarioLogado(usuarioId)) {
-            return processarCarrinhoDeUsuario(visitorId, usuarioId);
+            // Passamos o revendedorId para o carrinho de usuário
+            return processarCarrinhoDeUsuario(visitorId, usuarioId, revendedorId);
         }
-        return processarCarrinhoAnonimo(visitorId);
+        // Passamos o revendedorId para o carrinho anônimo
+        return processarCarrinhoAnonimo(visitorId, revendedorId);
     }
 
     @Transactional(readOnly = true)
@@ -155,23 +160,45 @@ public class CarrinhoService {
         return usuarioId != null && !usuarioId.trim().isEmpty();
     }
 
-    private Pedido processarCarrinhoDeUsuario(String visitorId, String usuarioId) {
+    private Pedido processarCarrinhoDeUsuario(String visitorId, String usuarioId, String revendedorId) {
         Pedido carrinhoOficial = pedidoRepository.findFirstByUsuarioIdAndStatusOrderByIdDesc(usuarioId, StatusPedido.CARRINHO)
-                .orElseGet(() -> criarCarrinho(null, usuarioId));
+                .orElseGet(() -> criarCarrinho(null, usuarioId)); // Cria novo se não achar
+
+        // REGRA DE OURO: Atualiza o revendedor do carrinho se o cliente acessou por um link novo
+        vincularRevendedor(carrinhoOficial, revendedorId);
 
         if (visitorId != null) {
             mesclarCarrinhoAnonimoNoOficial(visitorId, carrinhoOficial);
         }
 
-        return carrinhoOficial;
+        return pedidoRepository.saveAndFlush(carrinhoOficial);
     }
 
-    private Pedido processarCarrinhoAnonimo(String visitorId) {
-        if (visitorId == null) {
-            throw new IllegalArgumentException("Requisição inválida: Nenhum identificador fornecido.");
-        }
-        return pedidoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(visitorId, StatusPedido.CARRINHO)
+
+    private Pedido processarCarrinhoAnonimo(String visitorId, String revendedorId) {
+        Pedido carrinhoAnonimo = pedidoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(visitorId, StatusPedido.CARRINHO)
                 .orElseGet(() -> criarCarrinho(visitorId, null));
+
+        // Atualiza o revendedor também para clientes anônimos
+        vincularRevendedor(carrinhoAnonimo, revendedorId);
+
+        return pedidoRepository.saveAndFlush(carrinhoAnonimo);
+    }
+
+    // =======================================================
+// MÉTODOS AUXILIARES
+// =======================================================
+
+    private void vincularRevendedor(Pedido carrinho, String revendedorId) {
+        if (revendedorId != null) {
+            // Otimização: Só bate no banco se o revendedor atual for nulo ou diferente do novo
+            if (carrinho.getRevendedor() == null || !carrinho.getRevendedor().getId().equals(revendedorId)) {
+                Revendedor revendedor = revendedorRepository.findById(String.valueOf(revendedorId))
+                        .orElseThrow(() -> new RuntimeException("Revendedor não encontrado"));
+
+                carrinho.setRevendedor(revendedor);
+            }
+        }
     }
 
     private Pedido criarCarrinho(String visitorId, String usuarioId) {
@@ -188,6 +215,7 @@ public class CarrinhoService {
         return pedidoRepository.saveAndFlush(novo);
     }
 
+
     private void mesclarCarrinhoAnonimoNoOficial(String visitorId, Pedido carrinhoOficial) {
         pedidoRepository.findFirstByVisitorIdAndStatusOrderByIdDesc(visitorId, StatusPedido.CARRINHO).ifPresent(anonimo -> {
 
@@ -198,11 +226,19 @@ public class CarrinhoService {
             }
 
             transferirItens(anonimo, carrinhoOficial);
+
+            // Se o carrinho anônimo tinha um revendedor e o oficial não tem, nós herdamos ele na mesclagem!
+            if (carrinhoOficial.getRevendedor() == null && anonimo.getRevendedor() != null) {
+                carrinhoOficial.setRevendedor(anonimo.getRevendedor());
+            }
+
             pedidoRepository.delete(anonimo);
             pedidoRepository.flush();
             pedidoRepository.saveAndFlush(carrinhoOficial);
         });
     }
+
+
 
     private void transferirItens(Pedido origem, Pedido destino) {
         for (ItemPedido itemOrigem : origem.getItens()) {
@@ -238,8 +274,8 @@ public class CarrinhoService {
             maxAttempts = 3,
             backoff = @Backoff(delay = 150)
     )
-    public Pedido adicionarItem(String visitorId, String usuarioId, Long produtoId, Integer quantidade) {
-        Pedido carrinho = obterOuCriarCarrinho(visitorId, usuarioId);
+    public Pedido adicionarItem(String visitorId, String usuarioId, Long produtoId, Integer quantidade, String revendedorId) {
+        Pedido carrinho = obterOuCriarCarrinho(visitorId, usuarioId,revendedorId);
 
         Optional<ItemPedido> itemExistente = carrinho.getItens().stream()
                 .filter(item -> item.getProduto().getId().equals(produtoId))
@@ -274,7 +310,7 @@ public class CarrinhoService {
             backoff = @Backoff(delay = 150)
     )
     public Pedido removerItem(String visitorId, String usuarioId, Long produtoId) {
-        Pedido carrinho = obterOuCriarCarrinho(visitorId, usuarioId);
+        Pedido carrinho = obterOuCriarCarrinho(visitorId, usuarioId,null);
         carrinho.getItens().removeIf(item -> item.getProduto().getId().equals(produtoId));
         return pedidoRepository.saveAndFlush(carrinho);
     }
@@ -290,7 +326,7 @@ public class CarrinhoService {
             backoff = @Backoff(delay = 150)
     )
     public void limparCarrinho(String visitorId, String usuarioId) {
-        Pedido carrinho = obterOuCriarCarrinho(visitorId, usuarioId);
+        Pedido carrinho = obterOuCriarCarrinho(visitorId, usuarioId,null);
         carrinho.getItens().clear();
         pedidoRepository.saveAndFlush(carrinho);
     }

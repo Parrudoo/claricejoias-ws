@@ -243,6 +243,7 @@ public class ClienteService {
         dto.setId(cliente.getId());
         dto.setNome(cliente.getNome());
         dto.setTelefone(cliente.getWhatsapp());
+        dto.setNomeRevendedor(cliente.getRevendedor() != null ? cliente.getRevendedor().getNome() : "Clarice Joias");
 
         BigDecimal totalPedidosFiado = BigDecimal.ZERO;
         if (cliente.getPedidos() != null) {

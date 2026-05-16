@@ -3,6 +3,9 @@ package br.com.claricejoias_ws.service;
 import br.com.claricejoias_ws.dto.InstanceCreateRequest;
 import br.com.claricejoias_ws.model.WhatsappInstance;
 import br.com.claricejoias_ws.repository.WhatsappInstanceRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
@@ -25,6 +28,7 @@ public class EvolutionApiService {
     private String instancia;
     private final RestTemplate restTemplate = new RestTemplate();
     private final WhatsappInstanceRepository whatsappInstanceRepository;
+    private final ObjectMapper objectMapper;
 
     public void enviarMensagemTexto(String numeroDestino, String mensagem) {
         try {
@@ -97,28 +101,64 @@ public class EvolutionApiService {
         return restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
     }
 
-    public ResponseEntity<String> fetchInstances() {
+    public ResponseEntity<String> fetchInstances(String usuarioId) {
+
+        // 1. Busca a única instância deste usuário no banco de dados usando o ID
+        Optional<WhatsappInstance> instanceOpt = whatsappInstanceRepository.findByUsuarioId(usuarioId);
+
+        // Se ele não tem instância cadastrada, retorna array vazio sem bater na Evolution API
+        if (instanceOpt.isEmpty()) {
+            return ResponseEntity.ok("[]");
+        }
+
+        String userInstanceName = instanceOpt.get().getInstanceName();
+
+        // 2. Busca todas as instâncias na Evolution API
         String baseUrl = evolutionUrl.endsWith("/") ? evolutionUrl.substring(0, evolutionUrl.length() - 1) : evolutionUrl;
         String url = baseUrl + "/instance/fetchInstances";
         HttpEntity<Void> entity = new HttpEntity<>(getHeaders());
 
         try {
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
-            if (response.getBody() == null || response.getBody().trim().isEmpty()) {
+            String responseBody = response.getBody();
+
+            if (responseBody == null || responseBody.trim().isEmpty()) {
                 return ResponseEntity.ok("[]");
             }
-            return response;
+
+            // 3. Filtra o JSON procurando a única instância do usuário
+            JsonNode allInstancesNode = objectMapper.readTree(responseBody);
+            ArrayNode filteredInstances = objectMapper.createArrayNode();
+
+            if (allInstancesNode.isArray()) {
+                for (JsonNode node : allInstancesNode) {
+                    JsonNode nameNode = node.path("instance").path("instanceName");
+                    if (nameNode.isMissingNode()) {
+                        nameNode = node.path("instanceName");
+                    }
+
+                    // Verifica se o nome bate
+                    if (!nameNode.isMissingNode() && userInstanceName.equals(nameNode.asText())) {
+                        filteredInstances.add(node);
+                        break; // OTIMIZAÇÃO: Como a regra é 1 instância, achou, para o loop imediatamente.
+                    }
+                }
+            }
+
+            return ResponseEntity.ok(objectMapper.writeValueAsString(filteredInstances));
+
         } catch (Exception e) {
-            System.err.println("Erro ao buscar instâncias: " + e.getMessage());
-            throw e;
+            System.err.println("Erro ao buscar a instância do usuário: " + e.getMessage());
+            throw new RuntimeException("Erro ao buscar a instância", e);
         }
     }
+
 
     // ========================================================================
     // MÉTODOS DINÂMICOS PARA REVENDEDORES (BASEADO NO ID DO KEYCLOAK)
     // ========================================================================
 
-    public ResponseEntity<String> createInstanceForUser(String usuarioId, String username) {
+    public ResponseEntity<String> createInstanceForUser(String usuarioId, String username, boolean isAdmin) {
         // 1. Verifica se o usuário já tem uma instância ativa no banco
         Optional<WhatsappInstance> instanciaExistente = whatsappInstanceRepository.findByUsuarioId(usuarioId);
         if (instanciaExistente.isPresent()) {

@@ -151,7 +151,7 @@ public class LeadService {
 
         // 3. Busca o "Carrinho" (que já é um Pedido)
         // CORREÇÃO AQUI: Usamos o usuarioIdOrigem, pois foi com ele (ou com o visitorId) que o carrinho foi montado!
-        Pedido carrinhoPedido = carrinhoService.obterOuCriarCarrinho(visitorId, usuarioIdOrigem);
+        Pedido carrinhoPedido = carrinhoService.obterOuCriarCarrinho(visitorId, usuarioIdOrigem,null);
 
         if (carrinhoPedido.getItens().isEmpty()) {
             throw new RegraNegocioException("O carrinho está vazio.");

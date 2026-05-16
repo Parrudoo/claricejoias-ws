@@ -33,17 +33,17 @@ public class CarrinhoController {
         return ResponseEntity.ok(carrinho);
     }
 
-    @PostMapping("/adicionar/{produtoId}")
+    @PostMapping("/adicionar/{produtoId}") // Tire o /{revendedorId} daqui
     public ResponseEntity<CarrinhoDTO> adicionarItem(
             @RequestHeader(value = "X-Visitor-ID", required = false) String visitorId,
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable Long produtoId,
-            @RequestParam(defaultValue = "1") Integer quantidade) {
+            @RequestParam(defaultValue = "1") Integer quantidade,
+            @RequestParam(required = false) String revendedorId) { // Deixe como RequestParam
 
         String usuarioId = (jwt != null) ? jwt.getSubject() : null;
 
-        // O service agora devolve um Pedido (que atua como carrinho)
-        Pedido carrinhoAtualizado = carrinhoService.adicionarItem(visitorId, usuarioId, produtoId, quantidade);
+        Pedido carrinhoAtualizado = carrinhoService.adicionarItem(visitorId, usuarioId, produtoId, quantidade, revendedorId);
 
         return ResponseEntity.ok(carrinhoService.convertToDTO(carrinhoAtualizado));
     }

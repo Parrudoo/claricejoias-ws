@@ -13,6 +13,7 @@ public class ClienteResponseDTO {
     private Long id;
     private String nome;
     private String telefone;
+    private String nomeRevendedor;
 
     // Totalizador geral da dívida do cliente
     private BigDecimal valorDevido;

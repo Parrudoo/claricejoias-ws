@@ -39,9 +39,11 @@ public class SecurityConfigurations {
                         .requestMatchers(HttpMethod.GET, "/api/visitantes/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/cadastro", "/api/auth/recuperar-senha").permitAll()
 
-                        .requestMatchers("api/arquivos/view/**").permitAll()
-                        .requestMatchers("api/carrinho/**").permitAll()
-                        .requestMatchers("api/banners/**").permitAll()
+                        // CORREÇÃO AQUI: Adicionado a barra '/' no início das rotas
+                        .requestMatchers("/api/arquivos/view/**").permitAll()
+                        .requestMatchers("/api/carrinho/**").permitAll()
+                        .requestMatchers("/api/banners/**").permitAll()
+
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/clientes/me/**").permitAll()
