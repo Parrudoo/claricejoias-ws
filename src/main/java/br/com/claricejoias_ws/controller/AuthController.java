@@ -11,6 +11,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Collections;
@@ -62,10 +64,13 @@ public class AuthController {
 
 
     @PostMapping("/recuperar-senha")
-    public ResponseEntity<?> recuperarSenha(@RequestParam String whatsapp) {
+    public ResponseEntity<?> recuperarSenha(@RequestParam String whatsapp, @RequestParam(required = false) String revendedorId) {
         try {
-            // Chama o serviço que faz a mágica (Keycloak + Evolution API)
-            userService.recuperarSenhaViaWhatsApp(whatsapp);
+            if (revendedorId != null) {
+                userService.recuperarSenhaViaWhatsApp(whatsapp, revendedorId);
+            } else {
+                userService.recuperarSenhaViaWhatsAppMatriz(whatsapp);
+            }
 
             // Retorna 200 OK para o React saber que deu certo
             return ResponseEntity.ok(Map.of("mensagem", "Senha provisória enviada com sucesso!"));

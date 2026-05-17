@@ -54,7 +54,7 @@ public class MensagemController {
         textoIntro.append("Temos uma condição exclusiva liberada para você finalizar seu pedido hoje. Gostaria de conferir as opções?");
 
         // 2. Dispara a mensagem (Passando a instância)
-        whatsAppService.enviarMensagemTexto(lead, textoIntro.toString(), operador, revendedor.getInstanciaWhatsapp(),revendedor.getId());
+        whatsAppService.enviarMensagemTexto(lead, textoIntro.toString(), operador, revendedor);
 
         if (lead.getItens() != null && !lead.getItens().isEmpty()) {
             for (var item : lead.getItens()) {

@@ -6,6 +6,7 @@ import br.com.claricejoias_ws.model.Lead;
 import br.com.claricejoias_ws.model.Revendedor;
 import br.com.claricejoias_ws.repository.ClienteRepository;
 import br.com.claricejoias_ws.repository.LeadRepository;
+import br.com.claricejoias_ws.repository.RevendedorRepository;
 import jakarta.ws.rs.core.Response;
 import lombok.RequiredArgsConstructor;
 import org.keycloak.admin.client.Keycloak;
@@ -26,6 +27,8 @@ public class KeycloakUserService {
     private final ClienteRepository clienteRepository;
     private final LeadRepository leadRepository;
     private final EvolutionApiService evolutionApiService;
+    private final RevendedorRepository revendedorRepository;
+    private final WhatsAppService whatsAppService;
 
     private final String REALM_NAME = "claricejoias";
 
@@ -33,7 +36,8 @@ public class KeycloakUserService {
      * Fluxo para Clientes: Cadastro direto com senha definida no modal da loja.
      * Agora recebe o visitorId para aproveitar os dados do Lead!
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW) // Garante que se o banco falhar, o processo reverta com segurança
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    // Garante que se o banco falhar, o processo reverta com segurança
     public String criarUsuarioCliente(String email, String senha, String nomeCompleto, String whatsapp, String revendedorId) {
         String whatsappLimpo = (whatsapp != null) ? whatsapp.replaceAll("[^0-9]", "") : null;
         boolean isLojaMatriz = (revendedorId == null || revendedorId.trim().isEmpty());
@@ -130,14 +134,14 @@ public class KeycloakUserService {
 //        Response response = keycloak.realm(REALM_NAME).users().create(user);
 //        processarResposta(response, null, "ADMIN");
 //    }
-
-
-
-    public void recuperarSenhaViaWhatsApp(String whatsapp) {
+    public void recuperarSenhaViaWhatsApp(String whatsapp, String revendedorId) {
         String whatsappLimpo = whatsapp.replaceAll("[^0-9]", "");
 
+        Revendedor revendedor = revendedorRepository.findById(revendedorId)
+                .orElseThrow(() -> new RegraNegocioException("Revendedor não encontrado."));
+
         // 1. Verifica se o cliente existe
-        Cliente cliente = clienteRepository.findByWhatsapp(whatsappLimpo)
+        Cliente cliente = clienteRepository.findByWhatsappAndRevendedorId(whatsappLimpo, revendedor.getId())
                 .orElseThrow(() -> new RegraNegocioException("Número de WhatsApp não encontrado no sistema."));
 
         // 2. Gera a nova senha provisória de 6 dígitos
@@ -147,7 +151,7 @@ public class KeycloakUserService {
         // O userId do Keycloak você salvou na entidade Cliente!
         redefinirSenhaTemporaria(cliente.getUsuarioId(), pinProvisorio);
 
-        // 4. Dispara a mensagem via Evolution API
+        // 4. Monta a mensagem
         String mensagem = String.format(
                 "Olá *%s*! 🔒\n\nVocê solicitou a recuperação de senha na Clarice Joias.\n" +
                         "Sua nova senha de acesso provisória é: *%s*\n\n" +
@@ -155,7 +159,35 @@ public class KeycloakUserService {
                 cliente.getNome(), pinProvisorio
         );
 
-        evolutionApiService.enviarMensagemTexto(whatsappLimpo, mensagem);
+        // 5. JOGA PARA A FILA! (Retorno instantâneo para o Front-End)
+        whatsAppService.enfileirarMensagemSistema(whatsappLimpo, mensagem, revendedor);
+    }
+
+    public void recuperarSenhaViaWhatsAppMatriz(String whatsapp) {
+        String whatsappLimpo = whatsapp.replaceAll("[^0-9]", "");
+
+
+        // 1. Verifica se o cliente existe
+        Cliente cliente = clienteRepository.findByWhatsappAndRevendedorIsNull(whatsappLimpo)
+                .orElseThrow(() -> new RegraNegocioException("Número de WhatsApp não encontrado no sistema."));
+
+        // 2. Gera a nova senha provisória de 6 dígitos
+        String pinProvisorio = String.format("%06d", new Random().nextInt(999999));
+
+        // 3. Atualiza a senha direto no Keycloak (como Temporária)
+        // O userId do Keycloak você salvou na entidade Cliente!
+        redefinirSenhaTemporaria(cliente.getUsuarioId(), pinProvisorio);
+
+        // 4. Monta a mensagem
+        String mensagem = String.format(
+                "Olá *%s*! 🔒\n\nVocê solicitou a recuperação de senha na Clarice Joias.\n" +
+                        "Sua nova senha de acesso provisória é: *%s*\n\n" +
+                        "Acesse o site e faça login com ela. O sistema pedirá para você criar uma nova senha definitiva logo em seguida.",
+                cliente.getNome(), pinProvisorio
+        );
+
+        // 5. JOGA PARA A FILA! (Retorno instantâneo para o Front-End)
+        whatsAppService.enfileirarMensagemSistema(whatsappLimpo, mensagem, null);
     }
 
 

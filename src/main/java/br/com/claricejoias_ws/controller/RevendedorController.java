@@ -1,6 +1,7 @@
 package br.com.claricejoias_ws.controller;
 
 import br.com.claricejoias_ws.dto.AcertoRevendedorDTO;
+import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.Revendedor;
 import br.com.claricejoias_ws.repository.RevendedorRepository;
 import br.com.claricejoias_ws.service.FinanceiroRevendedorService;
@@ -10,6 +11,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -77,5 +80,23 @@ public class RevendedorController {
         return repository.findBySlug(slug)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    // =========================================================
+    // NOVO ENDPOINT: BUSCAR PERFIL DA REVENDEDORA LOGADA
+    // =========================================================
+    @Operation(summary = "Buscar meu perfil", description = "Retorna os dados da revendedora logada baseado no token JWT.")
+    @GetMapping("/meu-perfil")
+    public ResponseEntity<Revendedor> getMeuPerfil(@AuthenticationPrincipal Jwt jwt) {
+        if (jwt == null || jwt.getSubject() == null) {
+            throw new RegraNegocioException("Usuário não autenticado.");
+        }
+
+        String usuarioId = jwt.getSubject(); // Pega o ID (UUID) do usuário do token Keycloak
+
+        Revendedor revendedor = repository.findById(usuarioId)
+                .orElseThrow(() -> new RegraNegocioException("Revendedor não encontrado para o usuário logado."));
+
+        return ResponseEntity.ok(revendedor);
     }
 }

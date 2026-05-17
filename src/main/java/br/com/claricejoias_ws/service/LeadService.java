@@ -8,6 +8,7 @@ import br.com.claricejoias_ws.model.*;
 import br.com.claricejoias_ws.repository.FilaDisparoRepository;
 import br.com.claricejoias_ws.repository.LeadRepository;
 import br.com.claricejoias_ws.repository.PedidoRepository;
+import br.com.claricejoias_ws.repository.RevendedorRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.StaleObjectStateException;
@@ -36,6 +37,8 @@ public class LeadService {
     private final FilaDisparoRepository filaDisparoRepository;
     private final PedidoRepository pedidoRepository;
     private final CarrinhoService carrinhoService;
+    private final WhatsAppService whatsAppService;
+    private final RevendedorRepository revendedorRepository;
 
     private final Map<String, String> otpCache = new ConcurrentHashMap<>();
 
@@ -87,10 +90,12 @@ public class LeadService {
     // ETAPA 2: CHECKOUT (OTP E CONVERSÃO)
     // ==========================================
 
-    public void solicitarCodigoOtp(String whatsapp) {
+    public void solicitarCodigoOtp(String whatsapp, String revendedorID) {
         String whatsappLimpo = whatsapp.replaceAll("[^0-9]", "");
         String otp = String.format("%06d", new Random().nextInt(999999));
         otpCache.put(whatsappLimpo, otp);
+
+        Revendedor revendedor = revendedorRepository.findById(revendedorID).orElseThrow(() -> new RegraNegocioException(""));
 
         String mensagem = String.format("🔒 Seu código de segurança Clarice Joias é: *%s*", otp);
 
@@ -100,6 +105,7 @@ public class LeadService {
         fila.setTipo("OTP");
         fila.setStatus(StatusDisparo.PENDENTE);
         fila.setDataCriacao(LocalDateTime.now());
+        fila.setRevendedorId(revendedor.getId());
 
         filaDisparoRepository.save(fila);
     }
@@ -126,18 +132,24 @@ public class LeadService {
         boolean estaLogado = (usuarioIdOrigem != null && !usuarioIdOrigem.trim().isEmpty());
         boolean isLojaMatriz = (revendedorId == null || revendedorId.trim().isEmpty());
 
+        // 1. BUSCA O REVENDEDOR REAL NO BANCO (Para ter acesso à Instância do WhatsApp dele)
+        Revendedor revendedor = null;
+        if (!isLojaMatriz) {
+            revendedor = revendedorRepository.findById(revendedorId)
+                    .orElseThrow(() -> new RegraNegocioException("Revendedor não encontrado."));
+        }
+
         String finalUsuarioId = usuarioIdOrigem;
         String senhaGerada = null;
 
-        // 1. Cria a conta se necessário (Enviando a loja para o KeycloakService)
+        // 2. Cria a conta se necessário
         if (dto.isCriarConta() && !estaLogado) {
             senhaGerada = String.format("%06d", new Random().nextInt(999999));
             String emailKeycloak = whatsappLimpo + "@claricejoias.com.br";
-
             finalUsuarioId = keycloakUserService.criarUsuarioCliente(emailKeycloak, senhaGerada, dto.getNome(), whatsappLimpo, revendedorId);
         }
 
-        // 2. BUSCA INTELIGENTE DO LEAD (Agora isolada por Loja/Revendedor)
+        // 3. BUSCA INTELIGENTE DO LEAD
         Lead lead = obterOuPromoverLeadSeguro(whatsappLimpo, visitorId, finalUsuarioId, revendedorId);
 
         // Atualiza os dados
@@ -147,23 +159,21 @@ public class LeadService {
         if (visitorId != null) lead.setVisitorId(visitorId);
         if (finalUsuarioId != null) lead.setUsuarioId(finalUsuarioId);
 
-        // VINCULA O LEAD À LOJA ANTES DE SALVAR
-        if (!isLojaMatriz) {
-            Revendedor revendedor = new Revendedor();
-            revendedor.setId(revendedorId);
+        // 4. VINCULA O LEAD À LOJA ANTES DE SALVAR (Usando a entidade real buscada no passo 1)
+        if (revendedor != null) {
             lead.setRevendedor(revendedor);
         }
 
         lead = repository.save(lead);
 
-        // 3. Busca o "Carrinho" (Usando o revendedorId que já implementamos antes!)
+        // 5. Busca o Carrinho
         Pedido carrinhoPedido = carrinhoService.obterOuCriarCarrinho(visitorId, usuarioIdOrigem, revendedorId);
 
         if (carrinhoPedido.getItens().isEmpty()) {
             throw new RegraNegocioException("O carrinho está vazio.");
         }
 
-        // 4. Atualiza o Pedido
+        // 6. Atualiza o Pedido
         carrinhoPedido.setLead(lead);
         carrinhoPedido.setStatus(StatusPedido.AGUARDANDO_WHATSAPP);
         carrinhoPedido.setMetodoPagamento(dto.getMetodoPagamento() != null ? dto.getMetodoPagamento() : "PIX");
@@ -172,11 +182,10 @@ public class LeadService {
         if (finalUsuarioId != null) {
             carrinhoPedido.setUsuarioId(finalUsuarioId);
         }
-
         pedidoRepository.save(carrinhoPedido);
 
-        // 5. Fluxo de notificações
-        enviarNotificacaoFinal(dto, lead, carrinhoPedido, whatsappLimpo, senhaGerada);
+        // 7. Fluxo de notificações (Passando o revendedor para cair na fila certa)
+        enviarNotificacaoFinal(dto, lead, carrinhoPedido, whatsappLimpo, senhaGerada, revendedor);
 
         return lead;
     }
@@ -216,16 +225,21 @@ public class LeadService {
         return new Lead();
     }
 
-    // Método de notificação ajustado para usar a 'senhaGerada' e saber se envia ou não as credenciais
-    private void enviarNotificacaoFinal(LeadRequestDTO dto, Lead lead, Pedido pedido, String whatsapp, String senhaGerada) {
+    private void enviarNotificacaoFinal(LeadRequestDTO dto, Lead lead, Pedido pedido, String whatsappLimpo, String senhaGerada, Revendedor revendedor) {
+        StringBuilder msg = new StringBuilder();
+        msg.append(String.format("Olá *%s*, tudo bem? 💎\n\n", lead.getNome()));
+
         if (senhaGerada != null) {
-            String msg = String.format("Olá *%s*! 💎 Pedido *#%d* recebido!\n👤 Usuário: *%s*\n🔑 Senha: *%s*",
-                    dto.getNome(), pedido.getId(), whatsapp, senhaGerada);
-            evolutionApiService.enviarMensagemTexto(whatsapp, msg);
+            msg.append("Seu cadastro foi realizado com sucesso na Clarice Joias!\n");
+            msg.append(String.format("Sua senha provisória de acesso é: *%s*\n\n", senhaGerada));
         } else {
-            String msg = String.format("Olá *%s*! 💎 Recebemos seu pedido *#%d* com sucesso!", dto.getNome(), pedido.getId());
-            evolutionApiService.enviarMensagemTexto(whatsapp, msg);
+            msg.append("Vimos que você atualizou seus dados!\n\n");
         }
+
+        msg.append("Seu pedido já está separado em nosso sistema e aguardando finalização!");
+
+        // JOGA NA FILA DO RABBITMQ! O usuário não precisa esperar o WhatsApp enviar.
+        whatsAppService.enfileirarMensagemSistema(whatsappLimpo, msg.toString(), revendedor);
     }
 
 
@@ -289,8 +303,8 @@ public class LeadService {
         // 2. Mapeamos os Itens (extraindo do Pedido que é um Carrinho) e Agrupamos
         if (lead.getPedidos() != null) {
             lead.getPedidos().stream()
-                .filter(p -> p.getStatus() != null &&
-                        (p.getStatus().equals(StatusPedido.CARRINHO) || p.getStatus().equals(StatusPedido.CARRINHO_ABANDONADO)))
+                    .filter(p -> p.getStatus() != null &&
+                            (p.getStatus().equals(StatusPedido.CARRINHO) || p.getStatus().equals(StatusPedido.CARRINHO_ABANDONADO)))
                     .findFirst() // Pegamos o carrinho
                     .ifPresent(pedido -> {
 

@@ -128,8 +128,10 @@ public class LeadController {
 
 
     @PostMapping("/solicitar-codigo")
-    public ResponseEntity<?> solicitarCodigo(@RequestParam String whatsapp) {
-        leadService.solicitarCodigoOtp(whatsapp);
+    public ResponseEntity<?> solicitarCodigo(@RequestParam String whatsapp,
+                                             @RequestParam String revendedorId) {
+
+        leadService.solicitarCodigoOtp(whatsapp, revendedorId);
         return ResponseEntity.ok().build();
     }
 

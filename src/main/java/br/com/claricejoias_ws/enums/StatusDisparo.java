@@ -4,5 +4,7 @@ public enum StatusDisparo {
     PENDENTE,
     ENVIADO,
     ERRO,
-    EXPIRADO
+    EXPIRADO,
+    FALHA_INFRA,
+    EM_PROCESSAMENTO,
 }
