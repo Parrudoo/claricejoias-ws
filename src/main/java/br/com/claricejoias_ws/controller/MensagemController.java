@@ -54,7 +54,7 @@ public class MensagemController {
         textoIntro.append("Temos uma condição exclusiva liberada para você finalizar seu pedido hoje. Gostaria de conferir as opções?");
 
         // 2. Dispara a mensagem (Passando a instância)
-        whatsAppService.enviarMensagemTexto(lead, textoIntro.toString(), operador, revendedor.getInstanciaWhatsapp());
+        whatsAppService.enviarMensagemTexto(lead, textoIntro.toString(), operador, revendedor.getInstanciaWhatsapp(),revendedor.getId());
 
         if (lead.getItens() != null && !lead.getItens().isEmpty()) {
             for (var item : lead.getItens()) {
@@ -67,7 +67,7 @@ public class MensagemController {
                         String legendaDaFoto = "💍 *" + produto.getNome() + "*";
 
                         // Chama o envio de mídia (Passando a instância)
-                        whatsAppService.enviarMensagemImagem(modelMapper.map(lead, Lead.class), legendaDaFoto, path, operador, revendedor.getInstanciaWhatsapp());
+                        whatsAppService.enviarMensagemImagem(modelMapper.map(lead, Lead.class), legendaDaFoto, path, operador, revendedor);
 
                     } catch (Exception e) {
                         System.out.println("Erro ao agendar imagem: " + e.getMessage());
@@ -75,7 +75,7 @@ public class MensagemController {
                 } else {
                     String textoSemFoto = "💍 *" + produto.getNome() + "* (Imagem indisponível)";
                     // Passando a instância
-                    whatsAppService.enviarMensagemTexto(lead, textoSemFoto, operador, revendedor.getInstanciaWhatsapp());
+                    whatsAppService.enviarMensagemTexto(lead, textoSemFoto, operador, revendedor);
                 }
             }
         }

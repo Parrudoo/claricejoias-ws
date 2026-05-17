@@ -28,6 +28,7 @@ public class FilaDisparo {
     private LocalDateTime dataDisparo;
     private String motivoFalha;
     private String urlImagem;
+    private String revendedorId;
     @Column(name = "instancia_whatsapp")
     private String instanciaWhatsapp;
 }

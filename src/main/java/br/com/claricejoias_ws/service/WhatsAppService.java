@@ -3,12 +3,7 @@ package br.com.claricejoias_ws.service;
 import br.com.claricejoias_ws.dto.LeadDTO;
 import br.com.claricejoias_ws.enums.StatusDisparo;
 import br.com.claricejoias_ws.exceptions.RegraNegocioException;
-import br.com.claricejoias_ws.model.Cliente;
-import br.com.claricejoias_ws.model.FilaCobranca;
-import br.com.claricejoias_ws.model.FilaDisparo;
-import br.com.claricejoias_ws.model.HistoricoCobranca;
-import br.com.claricejoias_ws.model.HistoricoDisparo;
-import br.com.claricejoias_ws.model.Lead;
+import br.com.claricejoias_ws.model.*;
 import br.com.claricejoias_ws.repository.FilaCobrancaRepository;
 import br.com.claricejoias_ws.repository.FilaDisparoRepository;
 import br.com.claricejoias_ws.repository.HistoricoCobrancaRepository;
@@ -64,7 +59,7 @@ public class WhatsAppService {
     // =========================================================================
     // 1. ENFILEIRAR MENSAGEM PARA LEADS (TEXTO)
     // =========================================================================
-    public void enviarMensagemTexto(LeadDTO lead, String texto, String operador, String instanciaRevendedor) {
+    public void enviarMensagemTexto(LeadDTO lead, String texto, String operador, Revendedor revendedor) {
         if (filaRepository.existsByLeadIdAndStatus(lead.getId(), StatusDisparo.PENDENTE)) {
             throw new RegraNegocioException("Operação negada: " + lead.getNome() + " já possui uma mensagem na fila aguardando disparo.");
         }
@@ -74,10 +69,11 @@ public class WhatsAppService {
         FilaDisparo fila = new FilaDisparo();
         fila.setLead(modelMapper.map(lead,Lead.class));
         fila.setTexto(texto);
+        fila.setRevendedorId(revendedor.getId());
         fila.setOperador(operador);
         fila.setStatus(StatusDisparo.PENDENTE);
         fila.setDataCriacao(LocalDateTime.now());
-        fila.setInstanciaWhatsapp(instanciaRevendedor != null ? instanciaRevendedor : instanciaGlobal);
+        fila.setInstanciaWhatsapp(revendedor.getInstanciaWhatsapp() != null ? revendedor.getInstanciaWhatsapp() : instanciaGlobal);
         filaRepository.save(fila);
         System.out.println("Mensagem ENFILEIRADA para o lead: " + lead.getNome());
     }
@@ -85,7 +81,7 @@ public class WhatsAppService {
     // =========================================================================
     // NOVO: 1.1 ENFILEIRAR IMAGEM PARA LEADS (MÍDIA)
     // =========================================================================
-    public void enviarMensagemImagem(Lead lead, String legenda,String path, String operador, String instanciaRevendedor) {
+    public void enviarMensagemImagem(Lead lead, String legenda,String path, String operador, Revendedor revendedor) {
         FilaDisparo fila = new FilaDisparo();
         fila.setLead(lead);
         fila.setTexto(legenda); // A legenda vai no campo texto
@@ -94,7 +90,7 @@ public class WhatsAppService {
         fila.setStatus(StatusDisparo.PENDENTE);
         fila.setDataCriacao(LocalDateTime.now());
 
-        fila.setInstanciaWhatsapp(instanciaRevendedor != null ? instanciaRevendedor : instanciaGlobal);
+        fila.setInstanciaWhatsapp(revendedor.getInstanciaWhatsapp() != null ? revendedor.getInstanciaWhatsapp() : instanciaGlobal);
 
         filaRepository.save(fila);
         System.out.println("IMAGEM ENFILEIRADA para o lead: " + lead.getNome());

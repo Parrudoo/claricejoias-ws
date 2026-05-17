@@ -8,7 +8,7 @@ services:
       - "8082:8080"
     environment:
       - SPRING_APPLICATION_NAME=claricejoias-ws
-      # 👇 URLs ajustadas para a rede interna do Docker (usando os nomes dos serviços)
+      # URLs ajustadas para a rede interna do Docker (usando os nomes dos serviços)
       - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/claricejoias
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak:8080/realms/claricejoias
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak:8080/realms/claricejoias/protocol/openid-connect/certs
@@ -19,10 +19,29 @@ services:
       - EVOLUTION_API_URL=http://evolution-api:8080
       - EVOLUTION_API_KEY=claricejoias
       - EVOLUTION_API_INSTANCE=claricejoias
+      #  Configurações do RabbitMQ adicionadas
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_RABBITMQ_USERNAME=admin
+      - SPRING_RABBITMQ_PASSWORD=admin
     depends_on:
       - minio
       - db
       - keycloak
+      - rabbitmq #  Dependência adicionada
+
+  #  Novo serviço do RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: claricejoias-rabbitmq
+    ports:
+      - "5672:5672"   # Porta para comunicação com a aplicação Spring Boot
+      - "15672:15672" # Porta para o painel de gerenciamento Web (UI)
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq # Persistência das filas e mensagens
 
   minio:
     image: minio/minio
@@ -37,7 +56,6 @@ services:
     volumes:
       - minio_data:/data
 
-  # 👇 O SERVIÇO MÁGICO: Ele entra, cria o bucket e libera o acesso público
   minio-setup:
     image: minio/mc
     container_name: claricejoias-minio-setup
@@ -98,4 +116,5 @@ services:
 volumes:
   db_data:
   evolution_instances:
-  minio_data: # 👇 Volume adicionado para as imagens não sumirem
+  minio_data:
+  rabbitmq_data: #  Novo volume para o RabbitMQ adicionado
