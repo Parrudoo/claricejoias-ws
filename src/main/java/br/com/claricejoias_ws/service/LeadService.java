@@ -300,6 +300,12 @@ public class LeadService {
         dto.setAtivo(lead.getAtivo());
         dto.setComprou(lead.getComprou());
 
+        // ADICIONE ESTAS 3 LINHAS
+        if (lead.getRevendedor() != null) {
+            // Nota: Se na sua entidade Revendedor o nome for razaoSocial, altere para getRazaoSocial()
+            dto.setNomeRevendedor(lead.getRevendedor().getNome());
+        }
+
         // 2. Mapeamos os Itens (extraindo do Pedido que é um Carrinho) e Agrupamos
         if (lead.getPedidos() != null) {
             lead.getPedidos().stream()
@@ -378,5 +384,63 @@ public class LeadService {
             lead.setAtivo(!lead.getAtivo());
             return repository.save(lead);
         }).orElseThrow(() -> new RegraNegocioException("Lead não encontrado com o ID: " + id));
+    }
+
+    @Transactional
+    public LeadDTO atualizarLead(Long id, LeadAtualizacaoDTO dto) {
+        Lead lead = repository.findById(id)
+                .orElseThrow(() -> new RegraNegocioException("Lead não encontrado com o ID: " + id));
+
+        // Atualiza apenas os campos que vieram preenchidos no DTO
+        if (dto.getNome() != null && !dto.getNome().trim().isEmpty()) {
+            lead.setNome(dto.getNome());
+        }
+
+        if (dto.getWhatsapp() != null && !dto.getWhatsapp().trim().isEmpty()) {
+            lead.setWhatsapp(dto.getWhatsapp()); // O setter da entidade já limpa os caracteres especiais
+        }
+
+        if (dto.getEmail() != null && !dto.getEmail().trim().isEmpty()) {
+            lead.setEmail(dto.getEmail());
+        }
+
+        lead = repository.save(lead);
+        return montarLeadDTO(lead);
+    }
+
+    public MetricasLeadDTO calcularMetricas() {
+        long totalLeads = repository.count();
+        // Presume a existência do método countByComprouTrue no seu LeadRepository
+        long leadsConvertidos = repository.countByComprouTrue();
+
+        double taxaConversao = 0.0;
+        if (totalLeads > 0) {
+            taxaConversao = ((double) leadsConvertidos / totalLeads) * 100.0;
+            // Arredonda para 2 casas decimais (ex: 15.54)
+            taxaConversao = Math.round(taxaConversao * 100.0) / 100.0;
+        }
+
+        return new MetricasLeadDTO(totalLeads, leadsConvertidos, taxaConversao);
+    }
+
+    @Transactional
+    public void registrarHistoricoMensagem(Long id, MensagemLogDTO dto) {
+        Lead lead = repository.findById(id)
+                .orElseThrow(() -> new RegraNegocioException("Lead não encontrado com o ID: " + id));
+
+        HistoricoDisparo historico = new HistoricoDisparo();
+//        historico.setMensagem(dto.getMensagem());
+//        historico.setTipo(dto.getTipo());
+        historico.setDataHoraDisparo(LocalDateTime.now());
+        historico.setLead(lead); // Importante para o relacionamento bidirecional
+
+        // Como a entidade Lead tem cascade = CascadeType.ALL em historicoDisparos,
+        // basta adicionar à lista e o Hibernate cuidará de salvar na tabela filha.
+        if (lead.getHistoricoDisparos() == null) {
+            lead.setHistoricoDisparos(new ArrayList<>());
+        }
+
+        lead.getHistoricoDisparos().add(historico);
+        repository.save(lead);
     }
 }

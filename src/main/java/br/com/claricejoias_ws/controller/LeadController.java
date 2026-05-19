@@ -1,8 +1,6 @@
 package br.com.claricejoias_ws.controller;
 
-import br.com.claricejoias_ws.dto.CarrinhoDTO;
-import br.com.claricejoias_ws.dto.LeadDTO;
-import br.com.claricejoias_ws.dto.LeadRequestDTO;
+import br.com.claricejoias_ws.dto.*;
 import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.Lead;
 import br.com.claricejoias_ws.service.CarrinhoService;
@@ -176,5 +174,33 @@ public class LeadController {
             // O Map.of cria um JSON rápido para o Front-end ler a mensagem e exibir um alerta
             return ResponseEntity.badRequest().body(Map.of("erro", e.getMessage()));
         }
+    }
+
+    @GetMapping("/{id}")
+    @Operation(summary = "Detalhar Lead", description = "Retorna os dados completos de um lead específico para o modal ou página de detalhes.")
+    public ResponseEntity<LeadDTO> buscarPorId(@PathVariable Long id) {
+        return ResponseEntity.ok(leadService.buscarPorId(id));
+    }
+
+    @PutMapping("/{id}")
+    @Operation(summary = "Atualizar Lead", description = "Permite editar os dados de contato ou adicionar observações ao lead.")
+    public ResponseEntity<LeadDTO> atualizarLead(@PathVariable Long id, @RequestBody LeadAtualizacaoDTO dto) {
+        return ResponseEntity.ok(leadService.atualizarLead(id, dto));
+    }
+
+
+    @GetMapping("/metricas")
+    @Operation(summary = "Métricas de Conversão", description = "Retorna os contadores de leads totais e convertidos para os cards do dashboard.")
+    public ResponseEntity<MetricasLeadDTO> obterMetricas() {
+        return ResponseEntity.ok(leadService.calcularMetricas());
+    }
+
+    @PostMapping("/{id}/mensagens")
+    @Operation(summary = "Registrar envio de mensagem", description = "Salva no histórico do lead que uma mensagem (WhatsApp/Email) foi disparada.")
+    public ResponseEntity<Void> registrarDisparo(
+            @PathVariable Long id,
+            @RequestBody MensagemLogDTO dto) {
+        leadService.registrarHistoricoMensagem(id, dto);
+        return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 }

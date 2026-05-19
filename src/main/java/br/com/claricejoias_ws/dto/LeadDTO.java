@@ -23,6 +23,7 @@ public class LeadDTO {
     private String email;
     private Boolean ativo = true;
     private Boolean comprou = false;
+    private String nomeRevendedor;
     private List<HistoricoDisparoDTO> historicoDisparos;
     private List<LeadItemDTO> itens = new ArrayList<>();
 }

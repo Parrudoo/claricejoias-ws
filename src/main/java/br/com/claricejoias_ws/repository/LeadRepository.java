@@ -32,4 +32,6 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
     Optional<Lead> findByWhatsappAndRevendedorIsNull(String whatsapp);
 
     Optional<Lead> findByWhatsappAndRevendedorId(String whatsapp, String revendedorId);
+
+    long countByComprouTrue();
 }
