@@ -72,4 +72,8 @@ public interface PedidoRepository extends JpaRepository<Pedido, Long> {
     Optional<Pedido> findFirstByVisitorIdAndStatusAndRevendedorIsNullOrderByIdDesc(String visitorId, StatusPedido statusPedido);
 
     Optional<Pedido> findFirstByVisitorIdAndStatusAndRevendedorIdOrderByIdDesc(String visitorId, StatusPedido statusPedido, String revendedorId);
+
+    Page<Pedido> findByUsuarioIdAndRevendedorIdOrderByIdDesc(String usuarioId, String revendedorId, Pageable pageable);
+
+    Page<Pedido> findFirstByUsuarioIdAndRevendedorIsNullOrderByIdDesc(String usuarioId, Pageable pageable);
 }

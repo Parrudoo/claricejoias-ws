@@ -111,11 +111,12 @@ public class PedidoController {
     @GetMapping("/meus-pedidos")
     public ResponseEntity<Page<PedidoDTO>> listarMeusPedidos(
             @AuthenticationPrincipal Jwt jwt,
-            @PageableDefault(page = 0, size = 10, sort = "id", direction = Sort.Direction.DESC) Pageable pageable) {
+            @PageableDefault(page = 0, size = 10, sort = "id", direction = Sort.Direction.DESC)
+            @RequestParam(required = false) String revendedorId, Pageable pageable) {
 
         String usuarioId = jwt.getSubject();
 
-        Page<PedidoDTO> meusPedidos = pedidoService.listarMeusPedidos(usuarioId, pageable);
+        Page<PedidoDTO> meusPedidos = pedidoService.listarMeusPedidos(usuarioId,revendedorId, pageable);
         return ResponseEntity.ok(meusPedidos);
     }
 }

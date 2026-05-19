@@ -267,8 +267,15 @@ public class PedidoService {
         return pedidosPage.map(p -> modelMapper.map(p, PedidoDTO.class));
     }
 
-    public Page<PedidoDTO> listarMeusPedidos(String usuarioId, Pageable pageable) {
-        Page<Pedido> pedidos = pedidoRepository.findByUsuarioId(usuarioId, pageable);
+    public Page<PedidoDTO> listarMeusPedidos(String usuarioId, String revendedorId, Pageable pageable) {
+        boolean isLojaMatriz = (revendedorId == null || revendedorId.trim().isEmpty());
+        Page<Pedido> pedidos;
+        if (isLojaMatriz){
+             pedidos = pedidoRepository.findFirstByUsuarioIdAndRevendedorIsNullOrderByIdDesc(usuarioId, pageable);
+        }else {
+             pedidos = pedidoRepository.findByUsuarioIdAndRevendedorIdOrderByIdDesc(usuarioId,revendedorId, pageable);
+        }
+
         return pedidos.map(pedido -> modelMapper.map(pedido, PedidoDTO.class));
     }
 }
