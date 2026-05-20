@@ -279,8 +279,11 @@ public class LeadService {
     // ETAPA 3: PAINEL ADMINISTRATIVO (CRUD)
     // ==========================================
 
-    public Page<LeadDTO> listarTodos(Pageable pageable) {
-        return repository.findAll(pageable).map(this::montarLeadDTO);
+    public Page<LeadDTO> listarTodos(String busca, Pageable pageable) {
+        // Se a busca vier vazia, passamos null para a query ignorar o filtro
+        String termoBusca = (busca != null) ? busca.trim() : "";
+
+        return repository.buscarComFiltros(termoBusca, pageable).map(this::montarLeadDTO);
     }
 
     public LeadDTO buscarPorId(Long id) {
@@ -299,6 +302,12 @@ public class LeadService {
         dto.setEmail(lead.getEmail());
         dto.setAtivo(lead.getAtivo());
         dto.setComprou(lead.getComprou());
+
+        if (lead.getCliente() != null) {
+            dto.setCliente(modelMapper.map(lead.getCliente(), ClienteDTO.class));
+            // Se quiser garantir que a flag comprou esteja true quando tiver cliente:
+            dto.setComprou(true);
+        }
 
         // ADICIONE ESTAS 3 LINHAS
         if (lead.getRevendedor() != null) {

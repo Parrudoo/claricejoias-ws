@@ -12,4 +12,6 @@ public interface EstoqueRevendedorRepository extends JpaRepository<EstoqueRevend
     Optional<EstoqueRevendedor> findByProdutoIdAndRevendedorId(Long produtoId, String revendedorId);
 
     List<EstoqueRevendedor> findByRevendedorId(String revendedorId);
+
+    Optional<EstoqueRevendedor> findByRevendedorIdAndProdutoId(String revendedorId, Long produtoId);
 }

@@ -31,6 +31,20 @@ public class EstoqueRevendedorController {
         }
     }
 
+    // =========================================================================
+    // NOVO ENDPOINT: Devolução de não vendidos
+    // =========================================================================
+    @Operation(summary = "Devolver produtos não vendidos", description = "Retira itens da maleta do revendedor e os devolve para o estoque central.")
+    @PostMapping("/devolver")
+    public ResponseEntity<?> devolverParaEstoqueCentral(@RequestBody TransferenciaEstoqueDTO dto) {
+        try {
+            service.devolverParaEstoqueCentral(dto);
+            return ResponseEntity.ok("Devolução dos itens não vendidos realizada com sucesso.");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     @Operation(summary = "Listar produtos da maleta", description = "Retorna todos os itens e quantidades que um revendedor possui atualmente.")
     @GetMapping("/maleta/{revendedorId}")
     public ResponseEntity<List<EstoqueRevendedorDTO>> listarMaleta(@PathVariable String revendedorId) {

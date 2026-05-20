@@ -1,6 +1,7 @@
 package br.com.claricejoias_ws.repository;
 
 import br.com.claricejoias_ws.model.Lead;
+import org.modelmapper.ModelMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -34,4 +35,10 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
     Optional<Lead> findByWhatsappAndRevendedorId(String whatsapp, String revendedorId);
 
     long countByComprouTrue();
+
+    @Query("SELECT l FROM Lead l WHERE " +
+            ":busca IS NULL OR " +
+            "LOWER(l.nome) LIKE LOWER(CONCAT('%', :busca, '%')) OR " +
+            "l.whatsapp LIKE CONCAT('%', :busca, '%')")
+    Page<Lead> buscarComFiltros(@Param("busca") String busca, Pageable pageable);
 }

@@ -25,6 +25,10 @@ public class Lead {
     private String visitorId;
     private String usuarioId;
 
+    @OneToOne
+    @JoinColumn(name = "cliente_id", referencedColumnName = "id")
+    private Cliente cliente;
+
     // Controles do painel
     private Boolean ativo = true;
     private Boolean comprou = false;

@@ -86,7 +86,12 @@ public class CategoriaService {
 
     @Transactional
     public Categoria salvar(Categoria categoria) {
-        // Aqui você pode adicionar validações, como verificar se o nome já existe
+
+        if (categoria.getSubcategorias() != null) {
+            for (Subcategoria sub : categoria.getSubcategorias()) {
+                sub.setCategoria(categoria);
+            }
+        }
         return repository.save(categoria);
     }
 
@@ -96,7 +101,9 @@ public class CategoriaService {
                 .orElseThrow(() -> new RuntimeException("Categoria não encontrada com o ID: " + id));
 
         categoriaExistente.setNome(novosDados.getNome());
+        categoriaExistente.setSubcategorias(novosDados.getSubcategorias());
         categoriaExistente.setLoginUsuario(autenticacaoService.getUsername());
+
         // Se houver subcategorias e você quiser atualizar em lote, a lógica entraria aqui
 
         return repository.save(categoriaExistente);

@@ -29,6 +29,8 @@ public class Cliente {
 
     private String email;
 
+    @OneToOne(mappedBy = "cliente")
+    private Lead lead;
 
     @ManyToOne
     @JoinColumn(name = "revendedor_id")

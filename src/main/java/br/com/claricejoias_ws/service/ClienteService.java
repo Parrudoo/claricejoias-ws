@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import org.hibernate.StaleObjectStateException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
@@ -40,27 +42,35 @@ public class ClienteService {
     private String instanciaGlobal;
 
     @Transactional(readOnly = true)
-    public List<ClienteResponseDTO> listarTodos(String userId, boolean isAdmin) {
-        List<Cliente> clientes;
+    public Page<ClienteResponseDTO> listarTodos(String userId, boolean isAdmin, Pageable pageable) {
+        Page<Cliente> clientesPage;
 
         if (isAdmin) {
-            // Se for Admin, puxa o banco inteiro (todos os clientes de todo mundo)
-            clientes = clienteRepository.findAll();
+            // Se for Admin, puxa o banco inteiro paginado
+            clientesPage = clienteRepository.findAll(pageable);
         } else {
-            // Se for Revendedor, puxa APENAS os clientes atrelados ao ID dele
-            clientes = clienteRepository.findByRevendedorId(userId);
+            // Se for Revendedor, puxa APENAS os clientes atrelados ao ID dele, paginado
+            clientesPage = clienteRepository.findByRevendedorId(userId, pageable);
         }
 
-        return clientes.stream()
-                .map(this::converterParaDTO)
-                .collect(Collectors.toList());
+        // O método .map() do Page substitui o stream().map().collect()
+        return clientesPage.map(this::converterParaDTO);
     }
 
     @Transactional(readOnly = true)
-    public List<ClienteResponseDTO> listarPendentes() {
-        return clienteRepository.findClientesInadimplentes(StatusParcela.PENDENTE).stream()
-                .map(this::converterParaDTO)
-                .collect(Collectors.toList());
+    public Page<ClienteResponseDTO> listarPendentes(String userId, boolean isAdmin, Pageable pageable) {
+        Page<Cliente> clientesPage;
+
+        if (isAdmin) {
+            // Busca todos os inadimplentes do sistema de forma paginada
+            clientesPage = clienteRepository.findClientesInadimplentes(StatusParcela.PENDENTE, pageable);
+        } else {
+            // Busca apenas os inadimplentes vinculados ao revendedor logado
+            clientesPage = clienteRepository.findClientesInadimplentesPorRevendedor(StatusParcela.PENDENTE, userId, pageable);
+        }
+
+        // Converte a página de entidades diretamente para a página de DTOs
+        return clientesPage.map(this::converterParaDTO);
     }
 
     @Transactional
@@ -136,9 +146,10 @@ public class ClienteService {
                     novoCliente.setNome(leadDoMarketing.getNome());
                 }
             }
-
+            Cliente clienteSalvo = clienteRepository.save(novoCliente);
+            leadDoMarketing.setCliente(clienteSalvo);
             leadRepository.save(leadDoMarketing);
-            return clienteRepository.save(novoCliente);
+            return clienteSalvo;
         });
     }
 

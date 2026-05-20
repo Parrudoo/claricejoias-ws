@@ -97,11 +97,14 @@ public class LeadController {
     // ETAPA 3: GESTÃO DO PAINEL ADMINISTRATIVO (React Dashboard)
     // ==========================================================
 
+
     @GetMapping
     @Operation(summary = "Listar todos os leads", description = "Retorna a lista de leads paginada para o Dashboard.")
     public ResponseEntity<Page<LeadDTO>> listarLeads(
+            @RequestParam(required = false) String busca, // NOVO PARÂMETRO
             @PageableDefault(page = 0, size = 10, sort = "id", direction = Sort.Direction.DESC) Pageable pageable) {
-        return ResponseEntity.ok(leadService.listarTodos(pageable));
+
+        return ResponseEntity.ok(leadService.listarTodos(busca, pageable));
     }
 
     @PutMapping("/{id}/status")

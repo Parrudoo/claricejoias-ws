@@ -8,6 +8,10 @@ import br.com.claricejoias_ws.service.ClienteService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -26,9 +30,11 @@ public class ClienteController {
     private final AutenticacaoService autenticacaoService;
     private final ClienteRepository clienteRepository;
 
-    @Operation(summary = "Listar clientes baseados no perfil do usuário logado")
+    @Operation(summary = "Listar clientes baseados no perfil do usuário logado (Paginado)")
     @GetMapping
-    public ResponseEntity<List<ClienteResponseDTO>> listarTodos(@AuthenticationPrincipal Jwt jwt) {
+    public ResponseEntity<Page<ClienteResponseDTO>> listarTodos(
+            @AuthenticationPrincipal Jwt jwt,
+            @PageableDefault(page = 0, size = 10, sort = "id", direction = Sort.Direction.DESC) Pageable pageable) {
 
         // 1. Pega o ID do usuário (geralmente mapeado no 'sub' do token)
         String userId = jwt.getSubject();
@@ -36,8 +42,8 @@ public class ClienteController {
         // 2. Extrai a flag de Admin lendo as roles do token
         boolean isAdmin = verificarSeAdmin(jwt);
 
-        // 3. Passa a responsabilidade para o Service
-        return ResponseEntity.ok(clienteService.listarTodos(userId, isAdmin));
+        // 3. Passa a responsabilidade e o pageable para o Service
+        return ResponseEntity.ok(clienteService.listarTodos(userId, isAdmin, pageable));
     }
 
     private boolean verificarSeAdmin(Jwt jwt) {
@@ -57,17 +63,29 @@ public class ClienteController {
         return false;
     }
 
-    @Operation(summary = "Listar clientes com saldo devedor pendente")
+    @Operation(summary = "Listar clientes com saldo devedor pendente (Paginado)")
     @GetMapping("/pendentes")
-    public ResponseEntity<List<ClienteResponseDTO>> listarPendentes() {
-        return ResponseEntity.ok(clienteService.listarPendentes());
+    public ResponseEntity<Page<ClienteResponseDTO>> listarPendentes(
+            @AuthenticationPrincipal Jwt jwt,
+            @PageableDefault(page = 0, size = 10, sort = "id", direction = Sort.Direction.DESC) Pageable pageable) {
+
+        String userId = jwt.getSubject();
+        boolean isAdmin = verificarSeAdmin(jwt);
+
+        return ResponseEntity.ok(clienteService.listarPendentes(userId, isAdmin, pageable));
     }
 
     @Operation(summary = "Listar clientes da revendedora", description = "Retorna apenas os clientes vinculados a um revendedor específico.")
     @GetMapping("/revendedor/{revendedorId}")
-    public ResponseEntity<List<Cliente>> listarPorRevendedor(@AuthenticationPrincipal Jwt jwt) {
+    public ResponseEntity<Page<Cliente>> listarPorRevendedor(
+            @AuthenticationPrincipal Jwt jwt,
+            @PageableDefault(page = 0, size = 10, sort = "id", direction = Sort.Direction.DESC) Pageable pageable) {
+
         String usuarioId = (jwt != null) ? jwt.getSubject() : null;
-        List<Cliente> clientes = clienteRepository.findByRevendedorId(usuarioId);
+
+        // Passamos o pageable para o repositório
+        Page<Cliente> clientes = clienteRepository.findByRevendedorId(usuarioId, pageable);
+
         return ResponseEntity.ok(clientes);
     }
 

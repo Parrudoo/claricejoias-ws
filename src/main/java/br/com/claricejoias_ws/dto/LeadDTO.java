@@ -26,4 +26,5 @@ public class LeadDTO {
     private String nomeRevendedor;
     private List<HistoricoDisparoDTO> historicoDisparos;
     private List<LeadItemDTO> itens = new ArrayList<>();
+    private ClienteDTO cliente;
 }
