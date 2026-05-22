@@ -46,15 +46,22 @@ public class LeadService {
     // ETAPA 1: CAPTAÇÃO VIA ISCA DIGITAL
     // ==========================================
 
-    public boolean deveMostrarBotaoGuia(String visitorId) {
+    public boolean deveMostrarBotaoGuia(String visitorId, String revendedorId) {
         if (visitorId == null || visitorId.trim().isEmpty()) {
             return true;
         }
-        return !repository.existsByVisitorId(visitorId);
+
+        boolean isLojaMatriz = (revendedorId == null || revendedorId.trim().isEmpty());
+        if (isLojaMatriz) {
+            return !repository.existsByVisitorIdAndRevendedorIsNull(visitorId);
+        } else {
+            return !repository.existsByVisitorIdAndRevendedorId(visitorId,revendedorId);
+        }
+
     }
 
     @Transactional
-    public String converterEmLead(LeadDTO dto, String visitorId) {
+    public String converterEmLead(LeadDTO dto, String visitorId, String revendedorId) {
         String whatsappLimpo = dto.getWhatsapp().replaceAll("[^0-9]", "");
 
         if (whatsappLimpo.length() < 10) {
@@ -63,7 +70,15 @@ public class LeadService {
 
         String idNavegador = (visitorId != null && !visitorId.trim().isEmpty()) ? visitorId : UUID.randomUUID().toString();
 
-        Lead lead = repository.findFirstByVisitorIdOrderByIdDesc(idNavegador).orElse(null);
+        boolean isLojaMatriz = (revendedorId == null || revendedorId.trim().isEmpty());
+
+        Lead lead;
+        if (isLojaMatriz) {
+            lead = repository.findFirstByVisitorIdAndRevendedorIsNullOrderByIdDesc(idNavegador).orElse(null);
+        } else {
+            lead = repository.findFirstByVisitorIdAndRevendedorIdOrderByIdDesc(idNavegador,revendedorId).orElse(null);
+        }
+
 
         if (lead != null && lead.getUsuarioId() != null) {
             lead = null; // Proteção para computador público
@@ -91,11 +106,10 @@ public class LeadService {
     // ==========================================
 
     public void solicitarCodigoOtp(String whatsapp, String revendedorID) {
+        boolean isLojaMatriz = (revendedorID == null || revendedorID.trim().isEmpty());
         String whatsappLimpo = whatsapp.replaceAll("[^0-9]", "");
         String otp = String.format("%06d", new Random().nextInt(999999));
         otpCache.put(whatsappLimpo, otp);
-
-        Revendedor revendedor = revendedorRepository.findById(revendedorID).orElseThrow(() -> new RegraNegocioException(""));
 
         String mensagem = String.format("🔒 Seu código de segurança Clarice Joias é: *%s*", otp);
 
@@ -105,7 +119,14 @@ public class LeadService {
         fila.setTipo("OTP");
         fila.setStatus(StatusDisparo.PENDENTE);
         fila.setDataCriacao(LocalDateTime.now());
-        fila.setRevendedorId(revendedor.getId());
+
+        if (isLojaMatriz) {
+            fila.setRevendedorId(null);
+        } else {
+            Revendedor revendedor = revendedorRepository.findById(revendedorID).orElseThrow(() -> new RegraNegocioException(""));
+            fila.setRevendedorId(revendedor.getId());
+        }
+
 
         filaDisparoRepository.save(fila);
     }

@@ -41,4 +41,8 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
             "LOWER(l.nome) LIKE LOWER(CONCAT('%', :busca, '%')) OR " +
             "l.whatsapp LIKE CONCAT('%', :busca, '%')")
     Page<Lead> buscarComFiltros(@Param("busca") String busca, Pageable pageable);
+
+    boolean existsByVisitorIdAndRevendedorId(String visitorId, String revendedorId);
+
+    boolean existsByVisitorIdAndRevendedorIsNull(String visitorId);
 }

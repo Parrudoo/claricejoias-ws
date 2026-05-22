@@ -45,13 +45,14 @@ public class LeadController {
     public boolean verificarStatusGuia(
             @Parameter(description = "ID único do visitante gerado pelo frontend (UUID)")
             @RequestHeader(value = "X-Visitor-ID", required = false) String visitorId,
+            @RequestParam(required = false) String revendedorId,
             @AuthenticationPrincipal Jwt jwt) {
 
         // Se logado ou sem visitante registrado, valida a regra de exibição
         if (jwt != null) return false;
         if (visitorId == null) return true;
 
-        return leadService.deveMostrarBotaoGuia(visitorId);
+        return leadService.deveMostrarBotaoGuia(visitorId, revendedorId);
     }
 
     @PostMapping("/registrar-lead")
@@ -59,10 +60,12 @@ public class LeadController {
     public ResponseEntity<Map<String, String>> registrarLeadGuia(
             @Parameter(description = "ID único do visitante gerado pelo frontend (UUID)")
             @RequestHeader(value = "X-Visitor-ID", required = false) String visitorId,
+            @RequestParam(required = false) String revendedorId,
             @RequestBody LeadDTO dto) {
 
+
         // 1. Chama o service e guarda o cupom retornado
-        String cupomGerado = leadService.converterEmLead(dto, visitorId);
+        String cupomGerado = leadService.converterEmLead(dto, visitorId, revendedorId);
 
         // 2. Monta a resposta JSON para o Frontend
         Map<String, String> response = new HashMap<>();
@@ -130,7 +133,8 @@ public class LeadController {
 
     @PostMapping("/solicitar-codigo")
     public ResponseEntity<?> solicitarCodigo(@RequestParam String whatsapp,
-                                             @RequestParam String revendedorId) {
+                                             @RequestParam(required = false) String revendedorId) {
+
 
         leadService.solicitarCodigoOtp(whatsapp, revendedorId);
         return ResponseEntity.ok().build();
