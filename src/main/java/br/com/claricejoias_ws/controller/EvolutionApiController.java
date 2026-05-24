@@ -19,14 +19,15 @@ public class EvolutionApiController {
     private final EvolutionApiService evolutionApiService;
 
     @PostMapping
-    public ResponseEntity<String> create(@AuthenticationPrincipal Jwt jwt) {
+    public ResponseEntity<String> create(@AuthenticationPrincipal Jwt jwt,
+                                         @RequestParam(required = false) String revendedorId) {
+        boolean isLojaMatriz = ( revendedorId == null) || (revendedorId.trim().isEmpty());
+
         // O ID do Keycloak é a fonte da verdade
         String usuarioId = jwt.getSubject();
         String username = jwt.getClaimAsString("preferred_username");
-        boolean isAdmin = verificarSeAdmin(jwt);
-
         // O Backend decide os dados da instância, não o frontend!
-        return evolutionApiService.createInstanceForUser(usuarioId, username,isAdmin);
+        return evolutionApiService.createInstanceForUser(usuarioId, username,isLojaMatriz);
     }
 
     private boolean verificarSeAdmin(Jwt jwt) {

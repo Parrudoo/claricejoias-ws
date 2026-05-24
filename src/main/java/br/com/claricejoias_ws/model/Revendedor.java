@@ -2,7 +2,6 @@ package br.com.claricejoias_ws.model;
 
 import jakarta.persistence.*;
 import lombok.Data;
-
 import java.math.BigDecimal;
 
 @Data
@@ -15,15 +14,16 @@ public class Revendedor {
     private String nome;
     private String email;
     private Boolean ativo = true;
+
     @Column(unique = true, nullable = false)
     private String slug;
 
+    @OneToOne(mappedBy = "revendedor", cascade = CascadeType.ALL, orphanRemoval = true)
+    private WhatsappInstance whatsappInstance;
 
+    // CAMPO REMOVIDO: private String instanciaWhatsapp; (Evita redundância)
 
-    @Column(name = "instancia_whatsapp")
-    private String instanciaWhatsapp;
-
-    // NOVO CAMPO: O percentual de lucro deste revendedor (Ex: 35.00)
+    // O percentual de lucro deste revendedor (Ex: 35.00)
     @Column(name = "percentual_comissao", precision = 5, scale = 2)
     private BigDecimal percentualComissao = new BigDecimal("30.00");
 

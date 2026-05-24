@@ -1,7 +1,10 @@
 package br.com.claricejoias_ws.service;
 
 import br.com.claricejoias_ws.dto.InstanceCreateRequest;
+import br.com.claricejoias_ws.exceptions.RegraNegocioException;
+import br.com.claricejoias_ws.model.Revendedor;
 import br.com.claricejoias_ws.model.WhatsappInstance;
+import br.com.claricejoias_ws.repository.RevendedorRepository;
 import br.com.claricejoias_ws.repository.WhatsappInstanceRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.HashMap;
@@ -34,6 +38,7 @@ public class EvolutionApiService {
     private final RestTemplate restTemplate = new RestTemplate();
     private final WhatsappInstanceRepository whatsappInstanceRepository;
     private final ObjectMapper objectMapper;
+    private final RevendedorRepository revendedorRepository;
 
     // ========================================================================
     // ENVIO DE MENSAGENS (USADOS PELO RABBITMQ WORKER)
@@ -102,14 +107,23 @@ public class EvolutionApiService {
     // ========================================================================
 
     public ResponseEntity<String> createInstanceForUser(String usuarioId, String username, boolean isAdmin) {
-        Optional<WhatsappInstance> instanciaExistente = whatsappInstanceRepository.findByUsuarioId(usuarioId);
-        if (instanciaExistente.isPresent()) {
+
+        // 1. Validação Inicial: O usuário já possui instância?
+        if (whatsappInstanceRepository.existsByUsuarioId(usuarioId)) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body("{\"message\": \"Usuário já possui uma instância ativa.\"}");
         }
 
+        // 2. Regra de Negócio: Garantir apenas UMA instância sem revendedor (Se for Admin)
+        if (isAdmin && whatsappInstanceRepository.existsByRevendedorIsNull()) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body("{\"message\": \"Já existe uma instância global ativa no sistema.\"}");
+        }
+
+        // 3. Preparação dos dados (Com proteção de tamanho de String)
         String cleanUsername = username.replaceAll("[^a-zA-Z0-9]", "");
-        String instanceName = "rev_" + cleanUsername + "_" + usuarioId.substring(0, 5);
+        int idLength = Math.min(5, usuarioId.length()); // Evita StringIndexOutOfBoundsException
+        String instanceName = "rev_" + cleanUsername + "_" + usuarioId.substring(0, idLength);
         String uniqueToken = java.util.UUID.randomUUID().toString();
 
         Map<String, Object> payload = Map.of(
@@ -121,22 +135,32 @@ public class EvolutionApiService {
 
         String url = evolutionUrl + "/instance/create";
 
+        // 4. Chamada à Evolution API e Persistência
         try {
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(payload, getHeaders()), String.class);
+            ResponseEntity<String> response = restTemplate.exchange(
+                    url, HttpMethod.POST, new HttpEntity<>(payload, getHeaders()), String.class
+            );
 
             if (response.getStatusCode().is2xxSuccessful()) {
                 WhatsappInstance novaInstancia = new WhatsappInstance();
                 novaInstancia.setUsuarioId(usuarioId);
                 novaInstancia.setInstanceName(instanceName);
                 novaInstancia.setUniqueToken(uniqueToken);
+
+                // ATENÇÃO: Se NÃO for admin, precisamos vincular o revendedor!
+                 if (!isAdmin) {
+                     Revendedor revendedor = revendedorRepository.findById(usuarioId).orElseThrow(()-> new RegraNegocioException(""));
+                     novaInstancia.setRevendedor(revendedor);
+                 }
+
                 whatsappInstanceRepository.save(novaInstancia);
                 log.info("Instância {} criada com sucesso para o usuário {}", instanceName, usuarioId);
             }
 
             return response;
 
-        } catch (Exception e) {
-            log.error("Erro ao criar instância para revendedor {}: {}", usuarioId, e.getMessage());
+        } catch (RestClientException e) {
+            log.error("Erro na comunicação com a Evolution API para o usuário {}: {}", usuarioId, e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("{\"message\": \"Erro de comunicação com o servidor do WhatsApp.\"}");
         }

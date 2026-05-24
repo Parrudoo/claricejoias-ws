@@ -108,6 +108,7 @@ public class LeadService {
     public void solicitarCodigoOtp(String whatsapp, String revendedorID) {
         boolean isLojaMatriz = (revendedorID == null || revendedorID.trim().isEmpty());
         String whatsappLimpo = whatsapp.replaceAll("[^0-9]", "");
+
         String otp = String.format("%06d", new Random().nextInt(999999));
         otpCache.put(whatsappLimpo, otp);
 
@@ -122,8 +123,11 @@ public class LeadService {
 
         if (isLojaMatriz) {
             fila.setRevendedorId(null);
+            WhatsappInstance whatsappInstance = whatsAppService.findByRevendedorIsNull();
+            fila.setInstanciaWhatsapp(whatsappInstance.getInstanceName());
         } else {
             Revendedor revendedor = revendedorRepository.findById(revendedorID).orElseThrow(() -> new RegraNegocioException(""));
+            fila.setInstanciaWhatsapp(revendedor.getWhatsappInstance().getInstanceName());
             fila.setRevendedorId(revendedor.getId());
         }
 

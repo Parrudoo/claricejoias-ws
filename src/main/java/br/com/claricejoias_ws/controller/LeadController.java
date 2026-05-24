@@ -135,7 +135,6 @@ public class LeadController {
     public ResponseEntity<?> solicitarCodigo(@RequestParam String whatsapp,
                                              @RequestParam(required = false) String revendedorId) {
 
-
         leadService.solicitarCodigoOtp(whatsapp, revendedorId);
         return ResponseEntity.ok().build();
     }

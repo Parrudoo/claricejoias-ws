@@ -6,10 +6,7 @@ import br.com.claricejoias_ws.dto.LeadDTO;
 import br.com.claricejoias_ws.enums.StatusDisparo;
 import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.*;
-import br.com.claricejoias_ws.repository.FilaCobrancaRepository;
-import br.com.claricejoias_ws.repository.FilaDisparoRepository;
-import br.com.claricejoias_ws.repository.HistoricoCobrancaRepository;
-import br.com.claricejoias_ws.repository.HistoricoDisparoRepository;
+import br.com.claricejoias_ws.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
@@ -34,6 +31,7 @@ public class WhatsAppService {
     private final FilaCobrancaRepository filaCobrancaRepository;
     private final RabbitTemplate rabbitTemplate;
     private final ModelMapper modelMapper;
+    private final WhatsAppRepository whatsAppRepository;
 
     @Value("${app.whatsapp.cooldown-horas:24}")
     private int cooldownHoras;
@@ -59,7 +57,7 @@ public class WhatsAppService {
         fila.setOperador(operador);
         fila.setStatus(StatusDisparo.PENDENTE);
         fila.setDataCriacao(LocalDateTime.now());
-        fila.setInstanciaWhatsapp(revendedor.getInstanciaWhatsapp() != null ? revendedor.getInstanciaWhatsapp() : instanciaGlobal);
+        fila.setInstanciaWhatsapp(revendedor.getWhatsappInstance() != null ? revendedor.getWhatsappInstance().getInstanceName() : instanciaGlobal);
 
         filaRepository.save(fila);
         log.info("Mensagem TEXTO enfileirada para o lead: {}", lead.getNome());
@@ -73,7 +71,7 @@ public class WhatsAppService {
         fila.setOperador(operador);
         fila.setStatus(StatusDisparo.PENDENTE);
         fila.setDataCriacao(LocalDateTime.now());
-        fila.setInstanciaWhatsapp(revendedor.getInstanciaWhatsapp() != null ? revendedor.getInstanciaWhatsapp() : instanciaGlobal);
+        fila.setInstanciaWhatsapp(revendedor.getWhatsappInstance() != null ? revendedor.getWhatsappInstance().getInstanceName() : instanciaGlobal);
 
         filaRepository.save(fila);
         log.info("Mensagem IMAGEM enfileirada para o lead: {}", lead.getNome());
@@ -117,7 +115,7 @@ public class WhatsAppService {
 
         if (revendedor != null) {
             fila.setRevendedorId(revendedor.getId());
-            fila.setInstanciaWhatsapp(revendedor.getInstanciaWhatsapp() != null ? revendedor.getInstanciaWhatsapp() : instanciaGlobal);
+            fila.setInstanciaWhatsapp(revendedor.getWhatsappInstance() != null ? revendedor.getWhatsappInstance().getInstanceName() : instanciaGlobal);
         } else {
             fila.setInstanciaWhatsapp(instanciaGlobal);
         }
@@ -181,20 +179,12 @@ public class WhatsAppService {
 
     @Scheduled(fixedDelay = 10000)
     public void despacharCobrancasParaRabbitMQ() {
-        Optional<FilaCobranca> cobrancaOpt = filaCobrancaRepository.findFirstByStatusOrderByDataCriacaoAsc(StatusDisparo.PENDENTE);
 
-        cobrancaOpt.ifPresent(cobranca -> {
-            String instancia = cobranca.getInstanciaWhatsapp() != null ? cobranca.getInstanciaWhatsapp() : instanciaGlobal;
+    }
 
-            DisparoMensagemDTO dto = new DisparoMensagemDTO(
-                    cobranca.getId(), "COBRANCA", "TEXTO", cobranca.getCliente().getWhatsapp(),
-                    cobranca.getTexto(), null, instancia
-            );
 
-            rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_DISPAROS, RabbitMQConfig.ROUTING_KEY_DISPAROS, dto);
 
-            cobranca.setStatus(StatusDisparo.EM_PROCESSAMENTO);
-            filaCobrancaRepository.save(cobranca);
-        });
+    public WhatsappInstance findByRevendedorIsNull() {
+        return whatsAppRepository.findByRevendedorIsNull();
     }
 }

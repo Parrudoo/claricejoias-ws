@@ -178,7 +178,7 @@ public class ClienteService {
                 "Consta em nosso sistema um saldo pendente no valor de *R$ " + valorFormatado + "*.\n\n" +
                 "Gostaria de verificar uma previsão de pagamento para podermos dar baixa no sistema? Qualquer dúvida, estamos à disposição!";
 
-        whatsAppService.enviarCobrancaCliente(cliente, mensagem, autenticacaoService.getUsername(), revendedor.getInstanciaWhatsapp());
+        whatsAppService.enviarCobrancaCliente(cliente, mensagem, autenticacaoService.getUsername(), revendedor.getWhatsappInstance().getInstanceName());
 
         HistoricoCobranca historico = new HistoricoCobranca();
         historico.setCliente(cliente);

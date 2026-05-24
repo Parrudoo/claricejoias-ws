@@ -7,6 +7,10 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 
 @Repository
-public interface WhatsappInstanceRepository extends JpaRepository<WhatsappInstance,Long> {
+public interface WhatsappInstanceRepository extends JpaRepository<WhatsappInstance,String> {
     Optional<WhatsappInstance> findByUsuarioId(String usuarioId);
+
+    boolean existsByRevendedorIsNull();
+
+    boolean existsByUsuarioId(String usuarioId);
 }
