@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
@@ -35,7 +36,21 @@ public class EvolutionApiService {
     @Value("${evolution.api.instance}")
     private String instanciaGlobal;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    // Base pública onde este backend está acessível, usada para montar a URL
+    // do endpoint /api/arquivos/view/{objectName} que a Evolution API busca.
+    @Value("${app.public.url:http://localhost:8080}")
+    private String appPublicUrl;
+
+    // Timeouts explícitos: sem isso, uma Evolution API travada prende para sempre
+    // a thread do @RabbitListener que consome a fila de disparos (WhatsAppWorker).
+    private final RestTemplate restTemplate = criarRestTemplateComTimeout();
+
+    private static RestTemplate criarRestTemplateComTimeout() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5000);
+        factory.setReadTimeout(10000);
+        return new RestTemplate(factory);
+    }
     private final WhatsappInstanceRepository whatsappInstanceRepository;
     private final ObjectMapper objectMapper;
     private final RevendedorRepository revendedorRepository;
@@ -68,7 +83,7 @@ public class EvolutionApiService {
         }
     }
 
-    public void enviarMediaBase64(String numeroDestino, String legenda, String mediaBase64, String instanciaUso) {
+    public void enviarMediaBase64(String numeroDestino, String legenda, String mediaBase64OuUrl, String instanciaUso) {
         String url = evolutionUrl + "/message/sendMedia/" + instanciaUso;
         String numeroFormatado = formatarNumero(numeroDestino);
 
@@ -77,13 +92,27 @@ public class EvolutionApiService {
                 "mediaMessage", Map.of(
                         "mediatype", "image",
                         "caption", legenda != null ? legenda : "",
-                        "media", mediaBase64
+                        // A Evolution API aceita tanto base64 quanto uma URL http neste campo
+                        "media", mediaBase64OuUrl
                 ),
                 "options", Map.of("delay", 1200)
         );
 
         log.info("Enviando imagem via Evolution API para {} usando a instância: {}", numeroFormatado, instanciaUso);
         restTemplate.postForObject(url, new HttpEntity<>(body, getHeaders()), String.class);
+    }
+
+    // Usado pelo WhatsAppWorker: recebe o objectName gravado no MinIO (não a imagem em si)
+    // e monta a URL pública de /api/arquivos/view/{objectName} para a Evolution API baixar.
+    public boolean enviarImagem(String numeroDestino, String legenda, String objectName, String instanciaUso) {
+        try {
+            String mediaUrl = appPublicUrl + "/api/arquivos/view/" + objectName;
+            enviarMediaBase64(numeroDestino, legenda, mediaUrl, instanciaUso);
+            return true;
+        } catch (Exception e) {
+            log.error("Erro ao enviar imagem via Evolution API para {}: {}", numeroDestino, e.getMessage());
+            return false;
+        }
     }
 
     // Mantido para compatibilidade com partes antigas do sistema que não passam a instância
@@ -279,6 +308,22 @@ public class EvolutionApiService {
         }
     }
 
+    // Listagem SEM filtro, para o painel do ADMIN gerenciar a instância de qualquer revendedora.
+    // A autorização (ser ADMIN) é checada no controller antes de chamar este método.
+    public ResponseEntity<String> fetchAllInstancesForAdmin() {
+        String baseUrl = evolutionUrl.endsWith("/") ? evolutionUrl.substring(0, evolutionUrl.length() - 1) : evolutionUrl;
+        String url = baseUrl + "/instance/fetchInstances";
+
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(getHeaders()), String.class);
+            String responseBody = response.getBody();
+            return ResponseEntity.ok(responseBody == null || responseBody.trim().isEmpty() ? "[]" : responseBody);
+        } catch (Exception e) {
+            log.error("Erro ao buscar todas as instâncias na API: {}", e.getMessage());
+            throw new RuntimeException("Erro ao buscar as instâncias", e);
+        }
+    }
+
     // ========================================================================
     // GERENCIAMENTO DE INSTÂNCIAS GENÉRICAS (MÉTODOS ANTIGOS/ADMIN)
     // ========================================================================
@@ -300,7 +345,23 @@ public class EvolutionApiService {
 
     public ResponseEntity<String> deleteInstance(String instanceName) {
         String url = evolutionUrl + "/instance/delete/" + instanceName;
-        return restTemplate.exchange(url, HttpMethod.DELETE, new HttpEntity<>(getHeaders()), String.class);
+
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.DELETE, new HttpEntity<>(getHeaders()), String.class);
+
+            // Sem isto, a linha em WhatsappInstance ficava órfã: a instância sumia da Evolution
+            // API mas o banco continuava achando que a revendedora tem uma instância ativa.
+            if (response.getStatusCode().is2xxSuccessful()) {
+                whatsappInstanceRepository.findByInstanceName(instanceName).ifPresent(whatsappInstanceRepository::delete);
+                log.info("Instância {} deletada com sucesso no banco e na API", instanceName);
+            }
+
+            return response;
+        } catch (Exception e) {
+            log.error("Erro ao deletar instância {}: {}", instanceName, e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("{\"message\": \"Erro ao deletar instância.\"}");
+        }
     }
 
     public ResponseEntity<String> setWebhook(String instanceName, Map<String, Object> webhookConfig) {

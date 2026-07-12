@@ -1,6 +1,7 @@
 package br.com.claricejoias_ws.model;
 
 import br.com.claricejoias_ws.enums.TipoInstancia;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -16,6 +17,8 @@ public class WhatsappInstance {
     @Column(unique = true, nullable = false)
     private String instanceName;
 
+    // Segredo da Evolution API para esta instância — nunca deve sair em uma resposta JSON.
+    @JsonIgnore
     private String uniqueToken;
 
     @Enumerated(EnumType.STRING) // Recomendado adicionar se TipoInstancia for um enum

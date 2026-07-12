@@ -14,6 +14,7 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -53,28 +54,43 @@ public class WhatsAppService {
         FilaDisparo fila = new FilaDisparo();
         fila.setLead(modelMapper.map(lead, Lead.class));
         fila.setTexto(texto);
-        fila.setRevendedorId(revendedor.getId());
+        fila.setRevendedorId(revendedor != null ? revendedor.getId() : null);
         fila.setOperador(operador);
         fila.setStatus(StatusDisparo.PENDENTE);
         fila.setDataCriacao(LocalDateTime.now());
-        fila.setInstanciaWhatsapp(revendedor.getWhatsappInstance() != null ? revendedor.getWhatsappInstance().getInstanceName() : instanciaGlobal);
+        fila.setInstanciaWhatsapp(instanciaParaRevendedor(revendedor));
 
         filaRepository.save(fila);
         log.info("Mensagem TEXTO enfileirada para o lead: {}", lead.getNome());
     }
 
     public void enviarMensagemImagem(Lead lead, String legenda, String path, String operador, Revendedor revendedor) {
+        // Nota: não aplicamos aqui a checagem de "já existe mensagem PENDENTE" que existe em
+        // enviarMensagemTexto, porque o MensagemController enfileira várias imagens em sequência
+        // para o mesmo lead numa única chamada (uma por produto do carrinho) — todas ficam
+        // PENDENTE até o dispatcher rodar. Aplicar aquele check aqui quebraria esse fluxo.
+        // O cooldown de 24h (validarCooldown) já impede o abuso entre disparos diferentes.
+        validarCooldown(lead);
+
         FilaDisparo fila = new FilaDisparo();
         fila.setLead(lead);
         fila.setTexto(legenda);
         fila.setUrlImagem(path);
+        fila.setRevendedorId(revendedor != null ? revendedor.getId() : null);
         fila.setOperador(operador);
         fila.setStatus(StatusDisparo.PENDENTE);
         fila.setDataCriacao(LocalDateTime.now());
-        fila.setInstanciaWhatsapp(revendedor.getWhatsappInstance() != null ? revendedor.getWhatsappInstance().getInstanceName() : instanciaGlobal);
+        fila.setInstanciaWhatsapp(instanciaParaRevendedor(revendedor));
 
         filaRepository.save(fila);
         log.info("Mensagem IMAGEM enfileirada para o lead: {}", lead.getNome());
+    }
+
+    private String instanciaParaRevendedor(Revendedor revendedor) {
+        if (revendedor == null) {
+            return instanciaGlobal;
+        }
+        return revendedor.getWhatsappInstance() != null ? revendedor.getWhatsappInstance().getInstanceName() : instanciaGlobal;
     }
 
     public void enviarCobrancaCliente(Cliente cliente, String texto, String operador, String instanciaRevendedor) {
@@ -113,12 +129,8 @@ public class WhatsAppService {
         fila.setStatus(StatusDisparo.PENDENTE);
         fila.setDataCriacao(LocalDateTime.now());
 
-        if (revendedor != null) {
-            fila.setRevendedorId(revendedor.getId());
-            fila.setInstanciaWhatsapp(revendedor.getWhatsappInstance() != null ? revendedor.getWhatsappInstance().getInstanceName() : instanciaGlobal);
-        } else {
-            fila.setInstanciaWhatsapp(instanciaGlobal);
-        }
+        fila.setRevendedorId(revendedor != null ? revendedor.getId() : null);
+        fila.setInstanciaWhatsapp(instanciaParaRevendedor(revendedor));
 
         filaRepository.save(fila);
         log.info("Mensagem OTP enfileirada para o número: {}", numeroDestino);
@@ -142,6 +154,7 @@ public class WhatsAppService {
     // =========================================================================
 
     @Scheduled(fixedDelay = 5000)
+    @Transactional
     public void despacharFilaPrincipalParaRabbitMQ() {
         List<FilaDisparo> pendentes = filaRepository.findNextMessagesFairly();
 
@@ -179,7 +192,16 @@ public class WhatsAppService {
 
     @Scheduled(fixedDelay = 10000)
     public void despacharCobrancasParaRabbitMQ() {
-
+        // NÃO IMPLEMENTADO DE PROPÓSITO: hoje não existe fila/exchange nem consumidor dedicado
+        // para FilaCobranca no RabbitMQConfig/WhatsAppWorker. Publicar essas mensagens na mesma
+        // fila dos disparos (FILA_DISPAROS) faria o WhatsAppWorker tentar atualizar o status
+        // usando FilaDisparoRepository.findById(id) — um id de FilaCobranca não existe (ou pior,
+        // colide com o de outro registro) nessa tabela, corrompendo o status de disparos.
+        // As cobranças enfileiradas em enviarCobrancaCliente ficam paradas em FilaCobranca até
+        // que uma fila/consumidor próprios sejam criados para elas.
+        if (filaCobrancaRepository.findFirstByStatusOrderByDataCriacaoAsc(StatusDisparo.PENDENTE).isPresent()) {
+            log.warn("Há cobranças PENDENTES em FilaCobranca aguardando um consumidor dedicado no RabbitMQ (ainda não implementado).");
+        }
     }
 
 

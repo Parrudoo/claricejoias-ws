@@ -18,6 +18,12 @@ public class Revendedor {
     @Column(unique = true, nullable = false)
     private String slug;
 
+    // Número exibido para o CLIENTE clicar e falar com a revendedora (ex: rodapé da vitrine).
+    // Independente da WhatsappInstance, que é a instância da Evolution API usada para o
+    // ENVIO AUTOMÁTICO de mensagens (lead, OTP etc.) — os dois podem até ser o mesmo número
+    // físico, mas servem propósitos diferentes.
+    private String whatsappContato;
+
     @OneToOne(mappedBy = "revendedor", cascade = CascadeType.ALL, orphanRemoval = true)
     private WhatsappInstance whatsappInstance;
 

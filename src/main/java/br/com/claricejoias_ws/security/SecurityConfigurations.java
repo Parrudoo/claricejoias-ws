@@ -42,11 +42,10 @@ public class SecurityConfigurations {
                         // CORREÇÃO AQUI: Adicionado a barra '/' no início das rotas
                         .requestMatchers("/api/arquivos/view/**").permitAll()
                         .requestMatchers("/api/carrinho/**").permitAll()
-                        .requestMatchers("/api/banners/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/banners/ativos").permitAll()
 
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/clientes/me/**").permitAll()
 
                         // A SOLUÇÃO ESTÁ AQUI: Libera o POST (Cadastro) de Leads para os visitantes
                         .requestMatchers(HttpMethod.GET, "/api/leads/**").permitAll()
@@ -64,6 +63,26 @@ public class SecurityConfigurations {
                         .requestMatchers(HttpMethod.POST, "/api/categorias/**").hasAnyRole("OPERADOR", "ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/categorias/**").hasAnyRole("OPERADOR", "ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/categorias/**").hasRole("ADMIN")
+
+                        // Rotas de Gestão de Banners (Protegidas)
+                        .requestMatchers(HttpMethod.POST, "/api/banners/**").hasAnyRole("OPERADOR", "ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/banners/**").hasAnyRole("OPERADOR", "ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/banners/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/banners/**").hasAnyRole("OPERADOR", "ADMIN")
+
+                        // Rotas de Gestão de Revendedores (Protegidas)
+                        .requestMatchers(HttpMethod.POST, "/api/revendedores").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/revendedores/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/revendedores").hasAnyRole("OPERADOR", "ADMIN")
+
+                        // Listagem geral de instâncias do WhatsApp: só ADMIN (cada revendedora
+                        // já vê a própria pelas rotas /my-instance/*, que são self-scoped pelo JWT)
+                        .requestMatchers(HttpMethod.GET, "/api/whatsapp/instances").hasRole("ADMIN")
+
+                        // Rotas de Gestão de Arquivos (Protegidas, exceto /view/** já liberado acima)
+                        .requestMatchers(HttpMethod.POST, "/api/arquivos/upload").hasAnyRole("OPERADOR", "ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/arquivos/**").hasAnyRole("OPERADOR", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/arquivos/url/**", "/api/arquivos/download/**").hasAnyRole("OPERADOR", "ADMIN")
 
                         .anyRequest().authenticated()
                 )

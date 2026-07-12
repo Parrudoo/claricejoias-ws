@@ -154,9 +154,11 @@ public class ClienteService {
     }
 
     @Transactional
-    public void registrarCobranca(Long clienteId, String funcionario, String usuarioId) {
+    public void registrarCobranca(Long clienteId, String funcionario, String usuarioId, boolean isAdmin) {
         Cliente cliente = clienteRepository.findById(clienteId)
                 .orElseThrow(() -> new RuntimeException("Cliente não encontrado!"));
+
+        validarPosseDoCliente(cliente, usuarioId, isAdmin);
 
             Revendedor revendedor = revendedorService.findById(usuarioId)
                     .orElseThrow(() -> new RegraNegocioException(""));
@@ -188,9 +190,11 @@ public class ClienteService {
         historicoCobrancaRepository.save(historico);
     }
 
-    public List<MovimentacaoDTO> buscarHistoricoCompras(Long clienteId) {
+    public List<MovimentacaoDTO> buscarHistoricoCompras(Long clienteId, String usuarioId, boolean isAdmin) {
         Cliente cliente = clienteRepository.findById(clienteId)
                 .orElseThrow(() -> new RuntimeException("Cliente não encontrado!"));
+
+        validarPosseDoCliente(cliente, usuarioId, isAdmin);
 
         List<MovimentacaoDTO> extrato = new ArrayList<>();
 
@@ -243,6 +247,17 @@ public class ClienteService {
         extrato.sort(Comparator.comparing(MovimentacaoDTO::getData).reversed());
 
         return extrato;
+    }
+
+    private void validarPosseDoCliente(Cliente cliente, String usuarioId, boolean isAdmin) {
+        if (isAdmin) return;
+
+        boolean pertenceAoRevendedor = cliente.getRevendedor() != null
+                && cliente.getRevendedor().getId().equals(usuarioId);
+
+        if (!pertenceAoRevendedor) {
+            throw new RegraNegocioException("Você não tem permissão para acessar os dados deste cliente.");
+        }
     }
 
     // ==========================================================
@@ -331,15 +346,17 @@ public class ClienteService {
     }
 
     @Transactional
-    public void registrarPagamento(Long clienteId, BaixaPagamentoDTO dto) {
+    public void registrarPagamento(Long clienteId, BaixaPagamentoDTO dto, String usuarioId, boolean isAdmin) {
 
         if (dto.parcelaId() != null) {
-            pagarParcelaEspecifica(dto.parcelaId(), dto);
+            pagarParcelaEspecifica(dto.parcelaId(), dto, usuarioId, isAdmin);
             return;
         }
 
         Cliente cliente = clienteRepository.findById(clienteId)
                 .orElseThrow(() -> new RuntimeException("Cliente não encontrado"));
+
+        validarPosseDoCliente(cliente, usuarioId, isAdmin);
 
         BigDecimal valorPago = dto.valorPago();
         if (valorPago == null || valorPago.compareTo(BigDecimal.ZERO) <= 0) {
@@ -400,12 +417,14 @@ public class ClienteService {
         clienteRepository.save(cliente);
     }
 
-    private void pagarParcelaEspecifica(Long parcelaId, BaixaPagamentoDTO dto) {
+    private void pagarParcelaEspecifica(Long parcelaId, BaixaPagamentoDTO dto, String usuarioId, boolean isAdmin) {
         Parcela parcela = parcelaRepository.findById(parcelaId)
                 .orElseThrow(() -> new RuntimeException("Parcela não encontrada"));
 
-        if (StatusParcela.PAGA.equals(parcela.getStatus())) {
-            throw new RuntimeException("Esta parcela já está paga.");
+        validarPosseDoCliente(parcela.getPedido().getCliente(), usuarioId, isAdmin);
+
+        if (StatusParcela.PAGA.equals(parcela.getStatus()) || StatusParcela.CANCELADA.equals(parcela.getStatus())) {
+            throw new RuntimeException("Esta parcela não pode ser paga (status: " + parcela.getStatus() + ").");
         }
 
         parcela.setStatus(StatusParcela.PAGA);

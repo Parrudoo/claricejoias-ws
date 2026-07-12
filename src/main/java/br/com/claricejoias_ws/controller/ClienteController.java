@@ -110,7 +110,8 @@ public class ClienteController {
             @RequestBody Map<String, String> payload,
             @AuthenticationPrincipal Jwt jwt) {
         String usuarioId = (jwt != null) ? jwt.getSubject() : null;
-        clienteService.registrarCobranca(id, autenticacaoService.getUsername(), usuarioId);
+        boolean isAdmin = verificarSeAdmin(jwt);
+        clienteService.registrarCobranca(id, autenticacaoService.getUsername(), usuarioId, isAdmin);
 
         return ResponseEntity.ok().build();
 
@@ -121,10 +122,11 @@ public class ClienteController {
     // ==========================================================
     @Operation(summary = "Listar histórico detalhado de compras de um cliente específico")
     @GetMapping("/{id}/compras")
-    public ResponseEntity<List<MovimentacaoDTO>> listarComprasDoCliente(@PathVariable Long id) {
+    public ResponseEntity<List<MovimentacaoDTO>> listarComprasDoCliente(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
         try {
-            // Esse método precisará ser criado no seu ClienteService ou VendaService
-            List<MovimentacaoDTO> compras = clienteService.buscarHistoricoCompras(id);
+            String usuarioId = (jwt != null) ? jwt.getSubject() : null;
+            boolean isAdmin = verificarSeAdmin(jwt);
+            List<MovimentacaoDTO> compras = clienteService.buscarHistoricoCompras(id, usuarioId, isAdmin);
             return ResponseEntity.ok(compras);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
@@ -139,10 +141,13 @@ public class ClienteController {
     @PostMapping("/{id}/pagamentos")
     public ResponseEntity<Void> registrarPagamento(
             @PathVariable Long id,
-            @RequestBody BaixaPagamentoDTO baixaPagamentoDTO) {
+            @RequestBody BaixaPagamentoDTO baixaPagamentoDTO,
+            @AuthenticationPrincipal Jwt jwt) {
         try {
+            String usuarioId = (jwt != null) ? jwt.getSubject() : null;
+            boolean isAdmin = verificarSeAdmin(jwt);
             // O serviço processa a baixa no saldo e gera o histórico
-            clienteService.registrarPagamento(id, baixaPagamentoDTO);
+            clienteService.registrarPagamento(id, baixaPagamentoDTO, usuarioId, isAdmin);
             return ResponseEntity.ok().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();

@@ -14,6 +14,12 @@ public class KeycloakAdminConfig {
     @Value("${keycloak.server-url:http://localhost:8083}")
     private String keycloakServerUrl;
 
+    @Value("${keycloak.admin.username:admin}")
+    private String adminUsername;
+
+    @Value("${keycloak.admin.password:admin}")
+    private String adminPassword;
+
     @Bean
     public Keycloak keycloakAdminClient() {
         return KeycloakBuilder.builder()
@@ -21,8 +27,8 @@ public class KeycloakAdminConfig {
                 .realm("master")
                 .grantType(OAuth2Constants.PASSWORD)
                 .clientId("admin-cli")
-                .username("admin")
-                .password("admin")
+                .username(adminUsername)
+                .password(adminPassword)
                 .build();
     }
 }

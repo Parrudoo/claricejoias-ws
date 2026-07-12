@@ -1,3 +1,6 @@
+# ATENÇÃO: os valores após ":-" são apenas defaults para rodar localmente.
+# Em produção, defina as variáveis de ambiente reais (ex.: via secret manager do provedor)
+# e NUNCA volte a commitar senhas de verdade neste arquivo.
 version: '3.8'
 
 services:
@@ -10,20 +13,24 @@ services:
       - SPRING_APPLICATION_NAME=claricejoias-ws
       # URLs ajustadas para a rede interna do Docker (usando os nomes dos serviços)
       - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/claricejoias
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-postgres}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:-admin}
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak:8080/realms/claricejoias
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak:8080/realms/claricejoias/protocol/openid-connect/certs
+      - KEYCLOAK_ADMIN_USERNAME=${KEYCLOAK_ADMIN_USERNAME:-admin}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
       - MINIO_URL=http://minio:9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - MINIO_BUCKET_NAME=claricejoias
       - EVOLUTION_API_URL=http://evolution-api:8080
-      - EVOLUTION_API_KEY=claricejoias
-      - EVOLUTION_API_INSTANCE=claricejoias
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY:-claricejoias}
+      - EVOLUTION_API_INSTANCE=${EVOLUTION_API_INSTANCE:-claricejoias}
       #  Configurações do RabbitMQ adicionadas
       - SPRING_RABBITMQ_HOST=rabbitmq
       - SPRING_RABBITMQ_PORT=5672
-      - SPRING_RABBITMQ_USERNAME=admin
-      - SPRING_RABBITMQ_PASSWORD=admin
+      - SPRING_RABBITMQ_USERNAME=${RABBITMQ_DEFAULT_USER:-admin}
+      - SPRING_RABBITMQ_PASSWORD=${RABBITMQ_DEFAULT_PASS:-admin}
     depends_on:
       - minio
       - db
@@ -38,8 +45,8 @@ services:
       - "5672:5672"   # Porta para comunicação com a aplicação Spring Boot
       - "15672:15672" # Porta para o painel de gerenciamento Web (UI)
     environment:
-      - RABBITMQ_DEFAULT_USER=admin
-      - RABBITMQ_DEFAULT_PASS=admin
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER:-admin}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS:-admin}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq # Persistência das filas e mensagens
 
@@ -50,8 +57,8 @@ services:
       - "9000:9000"
       - "9001:9001"
     environment:
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
@@ -64,10 +71,9 @@ services:
     entrypoint: >
       /bin/sh -c "
       sleep 5;
-      /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin;
+      /usr/bin/mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin};
       /usr/bin/mc mb myminio/claricejoias || true;
-      /usr/bin/mc anonymous set download myminio/claricejoias;
-      echo 'Bucket claricejoias configurado como PUBLICO com sucesso!';
+      echo 'Bucket claricejoias criado (privado por padrão; gere URLs assinadas via /api/arquivos/url/**)';
       exit 0;
       "
 
@@ -75,8 +81,8 @@ services:
     image: postgres:14-alpine
     container_name: claricejoias-db
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: admin
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin}
       POSTGRES_DB: claricejoias
     ports:
       - "5433:5432"
@@ -90,7 +96,7 @@ services:
       - "8081:8080"
     environment:
       - SERVER_URL=http://localhost:8081
-      - AUTHENTICATION_API_KEY=claricejoias
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY:-claricejoias}
     volumes:
       - evolution_instances:/evolution/instances
 
@@ -99,12 +105,12 @@ services:
     container_name: claricejoias-keycloak
     command: start-dev
     environment:
-      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
-      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+      - KC_BOOTSTRAP_ADMIN_USERNAME=${KEYCLOAK_ADMIN_USERNAME:-admin}
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
       - KC_DB=postgres
       - KC_DB_URL=jdbc:postgresql://db:5432/claricejoias
-      - KC_DB_USERNAME=postgres
-      - KC_DB_PASSWORD=admin
+      - KC_DB_USERNAME=${POSTGRES_USER:-postgres}
+      - KC_DB_PASSWORD=${POSTGRES_PASSWORD:-admin}
       - KC_HOSTNAME_STRICT=false
     ports:
       - "8083:8080"

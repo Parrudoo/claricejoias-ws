@@ -9,6 +9,7 @@ import br.com.claricejoias_ws.repository.LeadRepository;
 import br.com.claricejoias_ws.repository.RevendedorRepository;
 import jakarta.ws.rs.core.Response;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
@@ -19,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class KeycloakUserService {
@@ -63,7 +65,7 @@ public class KeycloakUserService {
                     .orElseThrow(() -> new RuntimeException("Inconsistência de dados."));
             userId = clienteAntigo.getUsuarioId();
 
-            System.out.println("Cliente " + nomeCompleto + " já tinha login. Reaproveitando ID: " + userId);
+            log.info("Cliente {} já tinha login. Reaproveitando ID: {}", nomeCompleto, userId);
         } else {
             // Se é totalmente novo, cria no Keycloak
             UserRepresentation user = criarRepresentacaoBasica(email, nomeCompleto, whatsappLimpo);
@@ -262,7 +264,7 @@ public class KeycloakUserService {
             RoleRepresentation role = keycloak.realm(REALM_NAME).roles().get(roleName).toRepresentation();
             keycloak.realm(REALM_NAME).users().get(userId).roles().realmLevel().add(Collections.singletonList(role));
         } catch (Exception e) {
-            System.err.println("Erro ao atribuir role " + roleName + ". Certifique-se que ela existe no Keycloak.");
+            log.warn("Erro ao atribuir role {}. Certifique-se que ela existe no Keycloak.", roleName, e);
         }
     }
 }

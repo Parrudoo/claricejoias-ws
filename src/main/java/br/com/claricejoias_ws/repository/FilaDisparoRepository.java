@@ -13,13 +13,21 @@ import java.util.Optional;
 public interface FilaDisparoRepository extends JpaRepository<FilaDisparo, Long> {
 
 
-    // ROUND-ROBIN: Pega a mensagem mais antiga de cada revendedor (Até 50 por lote)
+    // ROUND-ROBIN: Pega a mensagem mais antiga de cada revendedor (Até 50 por lote).
+    // FOR UPDATE SKIP LOCKED evita que duas instâncias da aplicação peguem a mesma linha
+    // PENDENTE ao mesmo tempo (precisa rodar dentro de uma transação para o lock valer
+    // até a atualização de status — ver @Transactional no chamador).
     @Query(value = """
         WITH Ranked AS (
-            SELECT *, ROW_NUMBER() OVER(PARTITION BY revendedor_id ORDER BY data_criacao ASC) as rn
+            SELECT id, ROW_NUMBER() OVER(PARTITION BY revendedor_id ORDER BY data_criacao ASC) as rn
             FROM fila_disparo WHERE status = 'PENDENTE'
         )
-        SELECT * FROM Ranked WHERE rn = 1 LIMIT 50
+        SELECT f.* FROM fila_disparo f
+        JOIN Ranked r ON r.id = f.id
+        WHERE r.rn = 1
+        ORDER BY f.data_criacao ASC
+        LIMIT 50
+        FOR UPDATE OF f SKIP LOCKED
     """, nativeQuery = true)
     List<FilaDisparo> findNextMessagesFairly();
 

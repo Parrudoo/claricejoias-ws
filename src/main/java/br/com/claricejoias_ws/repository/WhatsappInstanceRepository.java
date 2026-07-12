@@ -10,6 +10,8 @@ import java.util.Optional;
 public interface WhatsappInstanceRepository extends JpaRepository<WhatsappInstance,String> {
     Optional<WhatsappInstance> findByUsuarioId(String usuarioId);
 
+    Optional<WhatsappInstance> findByInstanceName(String instanceName);
+
     boolean existsByRevendedorIsNull();
 
     boolean existsByUsuarioId(String usuarioId);

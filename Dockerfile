@@ -14,8 +14,14 @@ RUN mvn clean package -DskipTests
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
+# Cria um usuário não-root para rodar a aplicação (boa prática de segurança em containers)
+RUN addgroup -S app && adduser -S app -G app
+
 # Copia o .jar gerado no estágio 1
 COPY --from=build /app/target/*.jar app.jar
+
+RUN chown app:app app.jar
+USER app
 
 # Expõe a porta do Spring Boot
 EXPOSE 8080

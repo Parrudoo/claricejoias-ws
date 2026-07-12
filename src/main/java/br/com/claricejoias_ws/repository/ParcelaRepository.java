@@ -15,10 +15,11 @@ import java.time.LocalDate;
 public interface ParcelaRepository extends JpaRepository<Parcela, Long> {
 
     @Modifying
-    @Query("UPDATE Parcela p SET p.status = :statusAtrasada WHERE p.status <> :statusPaga AND p.dataVencimento <= :hoje")
+    @Query("UPDATE Parcela p SET p.status = :statusAtrasada WHERE p.status NOT IN (:statusPaga, :statusCancelada) AND p.dataVencimento <= :hoje")
     int marcarParcelasVencidas(
             @Param("statusAtrasada") StatusParcela statusAtrasada,
             @Param("statusPaga") StatusParcela statusPaga,
+            @Param("statusCancelada") StatusParcela statusCancelada,
             @Param("hoje") LocalDate hoje
     );
 }

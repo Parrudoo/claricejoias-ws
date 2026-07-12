@@ -4,6 +4,7 @@ import br.com.claricejoias_ws.dto.AcertoRevendedorDTO;
 import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.Revendedor;
 import br.com.claricejoias_ws.repository.RevendedorRepository;
+import br.com.claricejoias_ws.service.AutenticacaoService;
 import br.com.claricejoias_ws.service.FinanceiroRevendedorService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -26,6 +27,7 @@ public class RevendedorController {
 
     private final RevendedorRepository repository;
     private final FinanceiroRevendedorService financeiroRevendedorService;
+    private final AutenticacaoService autenticacaoService;
 
     @Operation(summary = "Vincular novo revendedor", description = "Cria um registro local para um usuário já cadastrado no Keycloak utilizando seu UUID.")
     @PostMapping
@@ -63,7 +65,12 @@ public class RevendedorController {
     public ResponseEntity<AcertoRevendedorDTO> obterAcerto(
             @PathVariable String revendedorId,
             @RequestParam(required = false) Integer mes,
-            @RequestParam(required = false) Integer ano) {
+            @RequestParam(required = false) Integer ano,
+            @AuthenticationPrincipal Jwt jwt) {
+
+        if (jwt == null || (!revendedorId.equals(jwt.getSubject()) && !autenticacaoService.temRole("ADMIN"))) {
+            throw new RegraNegocioException("Você não tem permissão para ver o acerto financeiro deste revendedor.");
+        }
 
         // Se não mandar mês/ano na URL, pega o mês atual por padrão
         if (mes == null) mes = LocalDate.now().getMonthValue();

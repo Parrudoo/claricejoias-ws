@@ -38,15 +38,20 @@ public class MinioService {
         ensureBucketExists();
 
         // Pega o nome original do arquivo que está sendo enviado
-        String objectName = file.getOriginalFilename();
+        String nomeOriginal = file.getOriginalFilename();
 
         // Validação de segurança básica para garantir que o nome não é nulo
-        if (objectName == null || objectName.trim().isEmpty()) {
+        if (nomeOriginal == null || nomeOriginal.trim().isEmpty()) {
             throw new IllegalArgumentException("O nome do arquivo original não pode ser nulo ou vazio.");
         }
 
-        // Opcional, mas recomendado: Limpa o caminho para evitar vulnerabilidades de Path Traversal
-        // objectName = org.springframework.util.StringUtils.cleanPath(objectName);
+        // Limpa o caminho para evitar vulnerabilidades de Path Traversal (ex: "../../secret.jpg")
+        String nomeLimpo = org.springframework.util.StringUtils.cleanPath(nomeOriginal);
+        // Mantém só o nome do arquivo, descartando qualquer diretório embutido que tenha sobrado
+        nomeLimpo = java.nio.file.Paths.get(nomeLimpo).getFileName().toString();
+
+        // Prefixo único para nunca sobrescrever um arquivo existente com o mesmo nome
+        String objectName = UUID.randomUUID() + "-" + nomeLimpo;
 
         minioClient.putObject(
                 PutObjectArgs.builder()
@@ -94,6 +99,16 @@ public class MinioService {
                         .object(objectName)
                         .build()
         );
+    }
+
+    public String getContentType(String objectName) throws Exception {
+        StatObjectResponse stat = minioClient.statObject(
+                StatObjectArgs.builder()
+                        .bucket(bucketName)
+                        .object(objectName)
+                        .build()
+        );
+        return stat.contentType() != null ? stat.contentType() : "application/octet-stream";
     }
 
     public void delete(String objectName) throws Exception {

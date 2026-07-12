@@ -23,6 +23,10 @@ public class Produto {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Version
+    private Long version;
+
     private String nome;
     private BigDecimal preco;
     private BigDecimal precoCusto;

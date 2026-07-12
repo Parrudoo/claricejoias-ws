@@ -1,17 +1,12 @@
 package br.com.claricejoias_ws.controller;
 
 import br.com.claricejoias_ws.dto.LeadDTO;
-import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.Lead;
 import br.com.claricejoias_ws.model.Revendedor;
 import br.com.claricejoias_ws.service.*;
-// Supondo que você tenha um RevendedorService para buscar a instância dele
-// import br.com.claricejoias_ws.service.RevendedorService;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,19 +22,17 @@ public class MensagemController {
     private final AutenticacaoService autenticacaoService;
     private final MinioService minioService;
     private final ModelMapper modelMapper;
-    private final RevendedorService revendedorService;
 
     @PostMapping("/disparar")
-    public ResponseEntity<String> dispararMensagem(@RequestBody MensagemRequestDTO request,
-    @AuthenticationPrincipal Jwt jwt) {
-        String usuarioId = (jwt != null) ? jwt.getSubject() : null;
+    public ResponseEntity<String> dispararMensagem(@RequestBody MensagemRequestDTO request) {
+        Lead leadEntity = leadService.buscarEntidadePorId(request.leadId());
         LeadDTO lead = leadService.buscarPorId(request.leadId());
         String operador = autenticacaoService.getUsername();
 
-         Revendedor revendedor = revendedorService.findById(usuarioId)
-                 .orElseThrow(()-> new RegraNegocioException("Instancia não encontrada para esse Usuario!"));
-
-
+        // A mensagem deve sair pelo WhatsApp da revendedora dona do lead, não pelo
+        // WhatsApp de quem clicou em "disparar" no painel. Lead sem revendedor
+        // (loja matriz) cai no fallback global dentro de WhatsAppService.
+        Revendedor revendedor = leadEntity.getRevendedor();
 
         // 1. Monta o texto
         StringBuilder textoIntro = new StringBuilder();

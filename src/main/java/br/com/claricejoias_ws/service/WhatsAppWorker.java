@@ -28,9 +28,12 @@ public class WhatsAppWorker {
         log.info("Processando mensagem ID: {} para o telefone: {}", mensagem.getIdRegistroBanco(), mensagem.getNumeroDestino());
 
         try {
-            // ========================================================
-            // AQUI VOCÊ CHAMA O SEU SERVIÇO DA EVOLUTION API
-             boolean sucesso = evolutionApiService.enviarMensagemTexto(mensagem.getNumeroDestino(), mensagem.getTexto(),mensagem.getInstanciaWhatsapp());
+            boolean temImagem = "IMAGEM".equals(mensagem.getTipoMensagem())
+                    && mensagem.getUrlImagem() != null && !mensagem.getUrlImagem().isBlank();
+
+            boolean sucesso = temImagem
+                    ? evolutionApiService.enviarImagem(mensagem.getNumeroDestino(), mensagem.getTexto(), mensagem.getUrlImagem(), mensagem.getInstanciaWhatsapp())
+                    : evolutionApiService.enviarMensagemTexto(mensagem.getNumeroDestino(), mensagem.getTexto(), mensagem.getInstanciaWhatsapp());
 
             if (sucesso) {
                 // Confirma que a mensagem foi processada (Remove da fila do RabbitMQ)

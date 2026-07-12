@@ -4,10 +4,12 @@ import br.com.claricejoias_ws.exceptions.RegraNegocioException;
 import br.com.claricejoias_ws.model.Cliente;
 import br.com.claricejoias_ws.repository.ClienteRepository;
 import br.com.claricejoias_ws.service.EvolutionApiService;
+
 import br.com.claricejoias_ws.service.KeycloakAuthService;
 import br.com.claricejoias_ws.service.KeycloakUserService;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,6 +21,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Random;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -27,6 +30,7 @@ public class AuthController {
 
     private final KeycloakAuthService authService;
     private final KeycloakUserService userService;
+    private final ClienteRepository clienteRepository;
 
 
     @PostMapping("/login")
@@ -37,7 +41,8 @@ public class AuthController {
             Map<String, Object> tokens = authService.realizarLogin(email, senha);
             return ResponseEntity.ok(tokens);
         } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Collections.singletonMap("erro", e.getMessage()));
+            log.warn("Falha de login para o e-mail informado: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Collections.singletonMap("erro", "E-mail ou senha inválidos."));
         }
     }
 
@@ -48,13 +53,18 @@ public class AuthController {
             @RequestHeader(value = "X-Visitor-ID", required = false) String visitorId) { // 1. Recebendo o ID do visitante
         try {
 
-            // 2. Repassando o visitorId para o serviço sincronizar tudo no banco de dados!
-//            userService.criarUsuarioCliente(
-//                    dados.get("email"),
-//                    dados.get("senha"),
-//                    dados.get("nome"),
-//                    dados.get("whatsapp")
-//            );
+            // 2. Cria no Keycloak + perfil local, e repassa o visitorId para vincular o histórico do Lead
+            String userId = userService.criarUsuarioCliente(
+                    dados.get("email"),
+                    dados.get("senha"),
+                    dados.get("nome"),
+                    dados.get("whatsapp"),
+                    dados.get("revendedorId")
+            );
+
+            clienteRepository.findByUsuarioId(userId).ifPresent(cliente ->
+                    userService.vincularVisitanteAoNovoUsuario(visitorId, userId, cliente)
+            );
 
             return ResponseEntity.status(HttpStatus.CREATED).body(Collections.singletonMap("mensagem", "Conta criada com sucesso!"));
         } catch (RuntimeException e) {
@@ -81,7 +91,7 @@ public class AuthController {
 
         } catch (Exception e) {
             // Se der pau no Keycloak ou no Evolution API, devolve erro 500
-            System.err.println("Erro ao recuperar senha: " + e.getMessage());
+            log.error("Erro ao recuperar senha", e);
             return ResponseEntity.internalServerError().body(Map.of("erro", "Ocorreu um erro interno ao processar a solicitação."));
         }
     }

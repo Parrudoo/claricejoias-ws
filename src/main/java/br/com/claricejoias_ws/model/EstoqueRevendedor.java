@@ -11,6 +11,9 @@ public class EstoqueRevendedor {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Version
+    private Long version;
+
     @ManyToOne
     @JoinColumn(name = "revendedor_id", nullable = false)
     private Revendedor revendedor;

@@ -48,11 +48,12 @@ public class ArquivoController {
     // Adicione este método no seu ArquivoController
     @GetMapping("/view/{objectName}")
     public ResponseEntity<InputStreamResource> view(@PathVariable String objectName) throws Exception {
+        String contentType = minioService.getContentType(objectName);
         InputStream stream = minioService.download(objectName);
 
-        // Retorna a imagem diretamente para o navegador renderizar na tag <img>
+        // Retorna o arquivo diretamente para o navegador renderizar, com o content-type real armazenado
         return ResponseEntity.ok()
-                .contentType(MediaType.IMAGE_JPEG) // Avisa o navegador que é uma imagem
+                .contentType(MediaType.parseMediaType(contentType))
                 .body(new InputStreamResource(stream));
     }
 

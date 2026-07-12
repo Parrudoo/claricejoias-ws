@@ -1,15 +1,15 @@
 package br.com.claricejoias_ws.controller;
 
 import br.com.claricejoias_ws.dto.InstanceCreateRequest;
+import br.com.claricejoias_ws.service.AutenticacaoService;
 import br.com.claricejoias_ws.service.EvolutionApiService;
+import br.com.claricejoias_ws.service.RevendedorService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
@@ -17,34 +17,25 @@ import java.util.Map;
 public class EvolutionApiController {
 
     private final EvolutionApiService evolutionApiService;
+    private final AutenticacaoService autenticacaoService;
+    private final RevendedorService revendedorService;
 
     @PostMapping
-    public ResponseEntity<String> create(@AuthenticationPrincipal Jwt jwt,
-                                         @RequestParam(required = false) String revendedorId) {
-        boolean isLojaMatriz = ( revendedorId == null) || (revendedorId.trim().isEmpty());
-
-        // O ID do Keycloak é a fonte da verdade
+    public ResponseEntity<String> create(@AuthenticationPrincipal Jwt jwt) {
         String usuarioId = jwt.getSubject();
         String username = jwt.getClaimAsString("preferred_username");
-        // O Backend decide os dados da instância, não o frontend!
-        return evolutionApiService.createInstanceForUser(usuarioId, username,isLojaMatriz);
-    }
 
-    private boolean verificarSeAdmin(Jwt jwt) {
-        // Estrutura padrão quando se usa Keycloak
-        if (jwt.hasClaim("realm_access")) {
-            Map<String, Object> realmAccess = jwt.getClaim("realm_access");
-            if (realmAccess != null && realmAccess.containsKey("roles")) {
-                List<String> roles = (List<String>) realmAccess.get("roles");
-                // Verifique o nome exato da sua role (pode ser "admin", "ROLE_ADMIN", etc)
-                return roles.contains("ROLE_ADMIN") || roles.contains("admin") || roles.contains("ADMIN");
-            }
+        // "Loja matriz"/global só pode ser criada por ADMIN de verdade (via role do Keycloak,
+        // nunca por um parâmetro que o cliente controla). Quem não é ADMIN só pode criar a
+        // própria instância se já existir um Revendedor vinculado ao seu ID do Keycloak —
+        // isso barra clientes comuns de criar/derrubar a instância global.
+        boolean isAdmin = autenticacaoService.temRole("ADMIN");
+        if (!isAdmin && revendedorService.findById(usuarioId).isEmpty()) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body("{\"message\": \"Apenas administradores ou revendedoras cadastradas podem criar uma instância de WhatsApp.\"}");
         }
 
-        // Caso você mapeie as authorities de outra forma, pode verificar assim:
-        // jwt.getClaimAsStringList("roles").contains("ROLE_ADMIN");
-
-        return false;
+        return evolutionApiService.createInstanceForUser(usuarioId, username, isAdmin);
     }
 
     @GetMapping("/my-instance/connect")
@@ -59,16 +50,59 @@ public class EvolutionApiController {
         return evolutionApiService.deleteInstanceByUser(usuarioId);
     }
 
-    // Apenas ADMINS deveriam acessar listarTodas
-    @GetMapping(produces = "application/json")
-    public ResponseEntity<String> listarTodas(@AuthenticationPrincipal Jwt jwt) {
-        String usuarioId = jwt.getSubject();
-        return evolutionApiService.fetchInstances(usuarioId);
-    }
-
     @DeleteMapping("/my-instance/logout")
     public ResponseEntity<String> logoutMyInstance(@AuthenticationPrincipal Jwt jwt) {
         String usuarioId = jwt.getSubject();
         return evolutionApiService.logoutInstanceByUser(usuarioId);
+    }
+
+    // Listagem self-scoped: qualquer usuário autenticado vê só a própria instância
+    // (é a mesma coisa que a tela "Status da Conexão" da revendedora usa).
+    @GetMapping(value = "/my-instance", produces = "application/json")
+    public ResponseEntity<String> listarMinhaInstancia(@AuthenticationPrincipal Jwt jwt) {
+        String usuarioId = jwt.getSubject();
+        return evolutionApiService.fetchInstances(usuarioId);
+    }
+
+    // Restrito a ADMIN em SecurityConfigurations (hasRole("ADMIN") em GET /api/whatsapp/instances).
+    // Ao contrário de /my-instance, aqui NÃO filtra por usuário: devolve todas as instâncias
+    // para o admin conseguir gerenciar a de qualquer revendedora.
+    @GetMapping(produces = "application/json")
+    public ResponseEntity<String> listarTodas() {
+        return evolutionApiService.fetchAllInstancesForAdmin();
+    }
+
+    // ------------------------------------------------------------------
+    // Ações do ADMIN sobre a instância de UMA revendedora específica
+    // (usadas pela tabela "Instâncias Existentes" do painel administrativo)
+    // ------------------------------------------------------------------
+
+    @GetMapping("/{instanceName}/connect")
+    public ResponseEntity<String> connectInstance(@PathVariable String instanceName) {
+        ResponseEntity<String> negado = exigirAdmin();
+        if (negado != null) return negado;
+        return evolutionApiService.connectInstance(instanceName);
+    }
+
+    @DeleteMapping("/{instanceName}")
+    public ResponseEntity<String> deleteInstance(@PathVariable String instanceName) {
+        ResponseEntity<String> negado = exigirAdmin();
+        if (negado != null) return negado;
+        return evolutionApiService.deleteInstance(instanceName);
+    }
+
+    @DeleteMapping("/{instanceName}/logout")
+    public ResponseEntity<String> logoutInstance(@PathVariable String instanceName) {
+        ResponseEntity<String> negado = exigirAdmin();
+        if (negado != null) return negado;
+        return evolutionApiService.logoutInstance(instanceName);
+    }
+
+    private ResponseEntity<String> exigirAdmin() {
+        if (!autenticacaoService.temRole("ADMIN")) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body("{\"message\": \"Apenas administradores podem gerenciar a instância de outra pessoa.\"}");
+        }
+        return null;
     }
 }

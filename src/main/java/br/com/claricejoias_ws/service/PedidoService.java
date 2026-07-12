@@ -102,6 +102,11 @@ public class PedidoService {
             BigDecimal valorPorParcela = saldoDevedor.divide(
                     BigDecimal.valueOf(qtdParcelas), 2, RoundingMode.HALF_UP
             );
+            // A última parcela absorve o resto da divisão, garantindo que a soma das
+            // parcelas bata exatamente com o saldo devedor (sem sobra/falta de centavos).
+            BigDecimal valorUltimaParcela = saldoDevedor.subtract(
+                    valorPorParcela.multiply(BigDecimal.valueOf(qtdParcelas - 1))
+            );
 
             List<Parcela> listaParcelas = new ArrayList<>();
             LocalDate dataAtual = LocalDate.now();
@@ -110,7 +115,7 @@ public class PedidoService {
                 Parcela parcela = new Parcela();
                 parcela.setPedido(pedido);
                 parcela.setNumeroParcela(i);
-                parcela.setValor(valorPorParcela);
+                parcela.setValor(i == qtdParcelas ? valorUltimaParcela : valorPorParcela);
                 parcela.setStatus(StatusParcela.PENDENTE);
                 parcela.setDataVencimento(dataAtual.plusMonths(i));
                 listaParcelas.add(parcela);

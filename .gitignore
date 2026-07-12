@@ -31,3 +31,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Segredos - nunca commitar ###
+backup-keycloak.json
+.env

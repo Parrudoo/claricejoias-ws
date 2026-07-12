@@ -316,6 +316,10 @@ public class LeadService {
         return montarLeadDTO(lead);
     }
 
+    public Lead buscarEntidadePorId(Long id) {
+        return repository.findById(id).orElseThrow(() -> new RegraNegocioException("Lead não encontrado"));
+    }
+
     private LeadDTO montarLeadDTO(Lead lead) {
         if (lead == null) return null;
 

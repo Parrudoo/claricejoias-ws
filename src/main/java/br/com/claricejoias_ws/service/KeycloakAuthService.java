@@ -1,5 +1,6 @@
 package br.com.claricejoias_ws.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -10,6 +11,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.util.Map;
 
+@Slf4j
 @Service
 public class KeycloakAuthService {
 
@@ -49,10 +51,12 @@ public class KeycloakAuthService {
             if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
                 throw new RuntimeException("E-mail ou senha incorretos.");
             }
-            throw new RuntimeException("Erro ao autenticar no Keycloak: " + e.getResponseBodyAsString());
+            log.error("Erro ao autenticar no Keycloak ({}): {}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw new RuntimeException("Erro ao autenticar. Tente novamente mais tarde.");
         } catch (Exception e) {
             // Tratamento para erros de conexão (como o Connection Refused)
-            throw new RuntimeException("Não foi possível conectar ao servidor de autenticação. Verifique a URL: " + tokenUrl);
+            log.error("Não foi possível conectar ao servidor de autenticação em {}", tokenUrl, e);
+            throw new RuntimeException("Não foi possível conectar ao servidor de autenticação. Tente novamente mais tarde.");
         }
     }
 }
